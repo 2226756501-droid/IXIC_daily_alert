@@ -41,8 +41,5 @@ def send_email(subject, body):
 if __name__ == "__main__":
     msg, pct, today = get_nasdaq()
     print(msg)
-    if abs(pct) >= 2:
-        send_email(f"【纳斯达克预警】{today} 涨跌幅 {pct:+.2f}%", msg)
-        print(">> 触发预警，邮件已发送")
-    else:
-        print(f">> 涨跌幅 {pct:+.2f}%，未达 2% 阈值，不发送通知")
+    send_email(f"【纳斯达克收盘】{today} 涨跌幅 {pct:+.2f}%", msg)
+    print(">> 邮件已发送")
