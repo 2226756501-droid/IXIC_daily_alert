@@ -3,12 +3,21 @@ import requests
 import smtplib
 import os
 import csv
+import json
 
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8")
 from email.mime.text import MIMEText
 from datetime import datetime, timezone
 
 HISTORY_FILE = "history.csv"
+CONFIG_FILE = "threshold_config.json"
+
+
+def load_config():
+    if not os.path.exists(CONFIG_FILE):
+        return {"sensitivity_multiplier": 1.0}
+    with open(CONFIG_FILE, "r") as f:
+        return json.load(f)
 
 
 def load_history():
@@ -42,12 +51,13 @@ def calc_z_score(pcts):
     return 0.0 if std == 0 else (pcts[-1] - mu) / std
 
 
-def describe_z(z):
-    if abs(z) < 1:
+def describe_z(z, multiplier=1.0):
+    t1, t2, t3 = 1 * multiplier, 2 * multiplier, 3 * multiplier
+    if abs(z) < t1:
         return "正常波动"
-    if abs(z) < 2:
+    if abs(z) < t2:
         return "值得注意"
-    if abs(z) < 3:
+    if abs(z) < t3:
         return "显著异常"
     return "极端行情"
 
@@ -78,7 +88,7 @@ def init_history():
     print(f">> 历史数据已初始化，共 {len(records)} 条")
 
 
-def get_today_data():
+def get_today_data(multiplier=1.0):
     data = fetch_chart("5d")
     results = data["chart"]["result"][0]
     timestamps = results["timestamp"]
@@ -95,7 +105,7 @@ def get_today_data():
     hist_pcts = [r[3] for r in records]
     window = hist_pcts[-(LOOKBACK - 1):] + [pct]
     z_score = calc_z_score(window)
-    level = describe_z(z_score)
+    level = describe_z(z_score, multiplier)
 
     msg = (f"今日（{today}）纳斯达克综合指数收于 {latest_close:.2f} 点，"
            f"较前一交易日{direction} {abs(change):.2f} 点，涨跌幅 {pct:+.2f}%。\n"
@@ -120,7 +130,9 @@ def send_email(subject, body):
 
 if __name__ == "__main__":
     init_history()
-    msg, pct, today, close, change, z_score = get_today_data()
+    config = load_config()
+    multiplier = config["sensitivity_multiplier"]
+    msg, pct, today, close, change, z_score = get_today_data(multiplier)
     print(msg)
 
     records = load_history()
