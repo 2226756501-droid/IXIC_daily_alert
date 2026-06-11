@@ -90,16 +90,17 @@ def init_history():
 
 
 def get_today_data(multiplier=1.0):
-    data = fetch_chart("5d")
+    data = fetch_chart("1mo")
     results = data["chart"]["result"][0]
+    meta = results["meta"]
     timestamps = results["timestamp"]
-    closes = [c for c in results["indicators"]["quote"][0]["close"] if c is not None]
-    opens = [o for o in results["indicators"]["quote"][0]["open"] if o is not None]
-    latest_close = closes[-1]
-    prev_close = closes[-2] if len(closes) >= 2 else opens[-1]
+    closes = results["indicators"]["quote"][0]["close"]
+    valid = [(ts, c) for ts, c in zip(timestamps, closes) if c is not None]
+    latest_ts, latest_close = valid[-1]
+    prev_close = meta.get("chartPreviousClose") or valid[-2][1]
     change = latest_close - prev_close
     pct = change / prev_close * 100
-    today = datetime.fromtimestamp(timestamps[-1], tz=timezone.utc).strftime("%Y-%m-%d")
+    today = datetime.fromtimestamp(latest_ts, tz=timezone.utc).strftime("%Y-%m-%d")
     direction = "📈 涨" if change >= 0 else "📉 跌"
 
     records = load_history()
