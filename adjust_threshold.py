@@ -35,7 +35,9 @@ if __name__ == "__main__":
     gh_out = os.environ.get("GITHUB_OUTPUT")
     if gh_out:
         with open(gh_out, "a") as f:
-            f.write(f"action={action}\n")
+            f.write("action<<EOF\n")
+            f.write(f"{action}\n")
+            f.write("EOF\n")
             f.write(f"changed=true\n")
             f.write(f"new_multiplier={new_val}\n")
 
