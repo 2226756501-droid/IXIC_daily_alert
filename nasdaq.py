@@ -11,6 +11,7 @@ from datetime import datetime, timezone
 
 HISTORY_FILE = "history.csv"
 CONFIG_FILE = "threshold_config.json"
+STATE_FILE = "market_state.json"
 
 
 def load_config():
@@ -128,6 +129,19 @@ def send_email(subject, body):
         server.login(email_user, email_pass)
         server.send_message(msg)
 
+
+def load_market_state():
+    if not os.path.exists(STATE_FILE):
+        return {"state": "normal", "consecutive_drops": 0, "abnormal_since": None, "max_drawdown_3m": None}
+    with open(STATE_FILE, "r") as f:
+        return json.load(f)
+
+
+def save_market_state(state):
+    with open(STATE_FILE, "w") as f:
+        json.dump(state, f, indent=2)
+
+
 if __name__ == "__main__":
     init_history()
     config = load_config()
@@ -142,5 +156,43 @@ if __name__ == "__main__":
         save_history(records)
         print(f">> 已记录 {today} 数据")
 
-    send_email(f"【纳斯达克收盘】{today} 涨跌幅 {pct:+.2f}%", msg)
+    state = load_market_state()
+    is_down = pct < 0
+    body = msg
+    subject = f"【纳斯达克收盘】{today} 涨跌幅 {pct:+.2f}%"
+
+    if is_down:
+        state["consecutive_drops"] = state.get("consecutive_drops", 0) + 1
+        drops = state["consecutive_drops"]
+
+        if drops == 3 and state.get("state") == "normal":
+            state["state"] = "abnormal"
+            state["abnormal_since"] = today
+            from fetch_news import fetch_nasdaq_news
+            news = fetch_nasdaq_news()
+            if news:
+                body += "\n────\n📰 今日相关新闻：\n" + "\n".join(f"{i+1}. {h}" for i, h in enumerate(news))
+
+        elif drops >= 5:
+            from calc_drawdown import calc_max_drawdown_3m
+            dd = calc_max_drawdown_3m()
+            if dd:
+                state["max_drawdown_3m"] = dd
+                body += f"\n────\n📉 近3月最大回撤：{dd['max_drawdown_pct']}%（{dd['date']}）"
+                subject = f"【异常时段】纳斯达克连跌{drops}天，近3月最大回撤 {dd['max_drawdown_pct']}%"
+
+    else:
+        if state.get("state") == "abnormal":
+            drops = state.get("consecutive_drops", 0)
+            state["state"] = "normal"
+            state["abnormal_since"] = None
+            state["consecutive_drops"] = 0
+            state["max_drawdown_3m"] = None
+            body += f"\n────\n✅ 异常时段结束（连跌{drops}天后恢复）"
+            subject = f"【纳斯达克收盘】异常时段结束 - {today} 涨跌幅 {pct:+.2f}%"
+        else:
+            state["consecutive_drops"] = 0
+
+    save_market_state(state)
+    send_email(subject, body)
     print(">> 邮件已发送")
