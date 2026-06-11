@@ -90,16 +90,25 @@ def init_history():
 
 
 def get_today_data(multiplier=1.0):
-    data = fetch_chart("1mo")
+    data = fetch_chart("1d")
     results = data["chart"]["result"][0]
-    timestamps = results["timestamp"]
+    meta = results["meta"]
     closes = results["indicators"]["quote"][0]["close"]
-    valid = [(ts, c) for ts, c in zip(timestamps, closes) if c is not None]
-    latest_ts, latest_close = valid[-1]
-    prev_ts, prev_close = valid[-2]
+
+    latest_close = meta.get("regularMarketPrice")
+    if latest_close is None:
+        valid = [c for c in closes if c is not None]
+        latest_close = valid[-1]
+    latest_close = float(latest_close)
+
+    prev_close = float(meta.get("chartPreviousClose", 0))
+    if not prev_close:
+        valid = [c for c in closes if c is not None]
+        prev_close = valid[-2] if len(valid) >= 2 else latest_close
+
     change = latest_close - prev_close
     pct = change / prev_close * 100
-    data_date = datetime.fromtimestamp(latest_ts, tz=timezone.utc).strftime("%Y-%m-%d")
+    data_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     direction = "📈 涨" if change >= 0 else "📉 跌"
 
     records = load_history()
@@ -108,7 +117,7 @@ def get_today_data(multiplier=1.0):
     z_score = calc_z_score(window)
     level = describe_z(z_score, multiplier)
 
-    msg = (f"纳斯达克综合指数收于 {latest_close:.2f} 点，"
+    msg = (f"纳斯达克指数收于 {latest_close:.2f} 点，"
            f"较前一交易日{direction} {abs(change):.2f} 点，涨跌幅 {pct:+.2f}%。\n"
            f"数据日期 {data_date}，异常度 Z = {z_score:.2f}（{level}）")
     return msg, pct, data_date, latest_close, change, z_score
