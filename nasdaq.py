@@ -182,7 +182,7 @@ if __name__ == "__main__":
             if news:
                 body += "\n────\n📰 今日相关新闻：\n" + "\n".join(f"{i+1}. {h}" for i, h in enumerate(news))
 
-        elif drops >= 5:
+        elif drops >= 4:
             from calc_drawdown import calc_max_drawdown_3m
             dd = calc_max_drawdown_3m()
             if dd:
