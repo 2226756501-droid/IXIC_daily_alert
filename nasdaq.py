@@ -92,15 +92,14 @@ def init_history():
 def get_today_data(multiplier=1.0):
     data = fetch_chart("1mo")
     results = data["chart"]["result"][0]
-    meta = results["meta"]
     timestamps = results["timestamp"]
     closes = results["indicators"]["quote"][0]["close"]
     valid = [(ts, c) for ts, c in zip(timestamps, closes) if c is not None]
     latest_ts, latest_close = valid[-1]
-    prev_close = meta.get("chartPreviousClose") or valid[-2][1]
+    prev_ts, prev_close = valid[-2]
     change = latest_close - prev_close
     pct = change / prev_close * 100
-    today = datetime.fromtimestamp(latest_ts, tz=timezone.utc).strftime("%Y-%m-%d")
+    data_date = datetime.fromtimestamp(latest_ts, tz=timezone.utc).strftime("%Y-%m-%d")
     direction = "📈 涨" if change >= 0 else "📉 跌"
 
     records = load_history()
@@ -109,10 +108,10 @@ def get_today_data(multiplier=1.0):
     z_score = calc_z_score(window)
     level = describe_z(z_score, multiplier)
 
-    msg = (f"今日（{today}）纳斯达克综合指数收于 {latest_close:.2f} 点，"
+    msg = (f"纳斯达克综合指数收于 {latest_close:.2f} 点，"
            f"较前一交易日{direction} {abs(change):.2f} 点，涨跌幅 {pct:+.2f}%。\n"
-           f"异常度 Z = {z_score:.2f}（{level}）")
-    return msg, pct, today, latest_close, change, z_score
+           f"数据日期 {data_date}，异常度 Z = {z_score:.2f}（{level}）")
+    return msg, pct, data_date, latest_close, change, z_score
 
 def send_email(subject, body):
     smtp_server = os.environ.get("SMTP_SERVER", "smtp.qq.com")
@@ -147,20 +146,20 @@ if __name__ == "__main__":
     init_history()
     config = load_config()
     multiplier = config["sensitivity_multiplier"]
-    msg, pct, today, close, change, z_score = get_today_data(multiplier)
+    msg, pct, data_date, close, change, z_score = get_today_data(multiplier)
     print(msg)
 
     records = load_history()
-    if not records or records[-1][0] != today:
+    if not records or records[-1][0] != data_date:
         fetch_time = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
-        records.append((today, close, change, pct, z_score, fetch_time))
+        records.append((data_date, close, change, pct, z_score, fetch_time))
         save_history(records)
-        print(f">> 已记录 {today} 数据")
+        print(f">> 已记录 {data_date} 数据")
 
     state = load_market_state()
     is_down = pct < 0
     body = msg
-    subject = f"【纳斯达克收盘】{today} 涨跌幅 {pct:+.2f}%"
+    subject = f"【纳斯达克数据】{data_date} 涨跌幅 {pct:+.2f}%"
 
     if is_down:
         state["consecutive_drops"] = state.get("consecutive_drops", 0) + 1
@@ -168,7 +167,7 @@ if __name__ == "__main__":
 
         if drops == 3 and state.get("state") == "normal":
             state["state"] = "abnormal"
-            state["abnormal_since"] = today
+            state["abnormal_since"] = data_date
             from fetch_news import fetch_nasdaq_news
             news = fetch_nasdaq_news()
             if news:
@@ -190,7 +189,7 @@ if __name__ == "__main__":
             state["consecutive_drops"] = 0
             state["max_drawdown_3m"] = None
             body += f"\n────\n✅ 异常时段结束（连跌{drops}天后恢复）"
-            subject = f"【纳斯达克收盘】异常时段结束 - {today} 涨跌幅 {pct:+.2f}%"
+            subject = f"【纳斯达克数据】异常时段结束 - {data_date} 涨跌幅 {pct:+.2f}%"
         else:
             state["consecutive_drops"] = 0
 
