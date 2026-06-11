@@ -12,6 +12,7 @@ from datetime import datetime, timezone
 HISTORY_FILE = "history.csv"
 CONFIG_FILE = "threshold_config.json"
 STATE_FILE = "market_state.json"
+MEMORY_FILE = "memory.json"
 
 
 def load_config():
@@ -151,6 +152,65 @@ def save_market_state(state):
         json.dump(state, f, indent=2)
 
 
+def load_memory():
+    if not os.path.exists(MEMORY_FILE):
+        return {"events": [], "next_id": 1}
+    with open(MEMORY_FILE, "r") as f:
+        return json.load(f)
+
+
+def save_memory(mem):
+    with open(MEMORY_FILE, "w") as f:
+        json.dump(mem, f, indent=2)
+
+
+def record_abnormal(z, drops, close, pct, date):
+    mem = load_memory()
+    mem["events"].append({
+        "id": mem["next_id"],
+        "date": date,
+        "trigger_z": round(z, 2),
+        "consecutive_drops": drops,
+        "close": round(close, 2),
+        "change_pct": round(pct, 2),
+        "lasted_days": None,
+        "recovery_date": None
+    })
+    mem["next_id"] += 1
+    save_memory(mem)
+    print(f">> 异常事件 #{mem['next_id'] - 1} 已记录")
+
+
+def finalize_abnormal(end_date, total_drops):
+    mem = load_memory()
+    for evt in reversed(mem["events"]):
+        if evt.get("lasted_days") is None:
+            evt["lasted_days"] = total_drops
+            evt["recovery_date"] = end_date
+            save_memory(mem)
+            print(f">> 异常事件 #{evt['id']} 已完结（持续 {total_drops} 天）")
+            return
+
+
+def query_similar(z, drops):
+    mem = load_memory()
+    matched = [e for e in mem["events"]
+               if e.get("lasted_days") and e["trigger_z"] <= z and e["consecutive_drops"] >= drops]
+    if len(matched) < 2:
+        return None
+    avg_last = sum(e["lasted_days"] for e in matched) / len(matched)
+    avg_change = sum(e["change_pct"] for e in matched) / len(matched)
+    return {"count": len(matched), "avg_lasted_days": round(avg_last, 1), "avg_change_pct": round(avg_change, 2)}
+
+
+def build_memory_advice(z, drops):
+    ref = query_similar(z, drops)
+    if not ref:
+        return ""
+    return (f"📋 历史参考：过去 {ref['count']} 次类似情况中（Z≤{z:.1f}，连跌≥{drops} 天），"
+            f"异常平均持续 {ref['avg_lasted_days']} 天，当日平均涨跌幅 {ref['avg_change_pct']:+.2f}%。")
+
+
 if __name__ == "__main__":
     init_history()
     config = load_config()
@@ -177,6 +237,7 @@ if __name__ == "__main__":
         if drops == 3 and state.get("state") == "normal":
             state["state"] = "abnormal"
             state["abnormal_since"] = data_date
+            record_abnormal(z_score, drops, close, pct, data_date)
             from fetch_news import fetch_nasdaq_news
             news = fetch_nasdaq_news()
             if news:
@@ -197,11 +258,19 @@ if __name__ == "__main__":
             state["abnormal_since"] = None
             state["consecutive_drops"] = 0
             state["max_drawdown_3m"] = None
+            finalize_abnormal(data_date, drops)
             body += f"\n────\n✅ 异常时段结束（连跌{drops}天后恢复）"
             subject = f"【纳斯达克数据】异常时段结束 - {data_date} 涨跌幅 {pct:+.2f}%"
         else:
             state["consecutive_drops"] = 0
 
     save_market_state(state)
+
+    drops = state.get("consecutive_drops", 0)
+    if is_down and drops >= 2 and z_score <= -1.5:
+        advice = build_memory_advice(z_score, drops)
+        if advice:
+            body += "\n" + advice
+
     send_email(subject, body)
     print(">> 邮件已发送")
