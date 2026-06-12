@@ -28,6 +28,7 @@ jobs:
           git config user.name "NASDAQ Bot"
           git config user.email "nasdaq-bot@users.noreply.github.com"
           git pull --rebase --autostash origin main
-           git add history.csv market_state.json memory.json
+           git add history.csv market_state.json
+          test -f memory.json && git add memory.json || true
           git diff --cached --quiet || git commit -m "daily: update data"
           git push
