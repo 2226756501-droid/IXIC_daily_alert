@@ -6,15 +6,17 @@ from typing import Any
 
 import requests
 
-HISTORY_FILE = os.path.join(os.path.dirname(os.path.dirname(__file__)), "history.csv")
-CONFIG_FILE = os.path.join(os.path.dirname(os.path.dirname(__file__)), "threshold_config.json")
-STATE_FILE = os.path.join(os.path.dirname(os.path.dirname(__file__)), "market_state.json")
-MEMORY_FILE = os.path.join(os.path.dirname(os.path.dirname(__file__)), "memory.json")
+HISTORY_FILE: str = os.path.join(os.path.dirname(os.path.dirname(__file__)), "history.csv")
+CONFIG_FILE: str = os.path.join(os.path.dirname(os.path.dirname(__file__)), "threshold_config.json")
+STATE_FILE: str = os.path.join(os.path.dirname(os.path.dirname(__file__)), "market_state.json")
+MEMORY_FILE: str = os.path.join(os.path.dirname(os.path.dirname(__file__)), "memory.json")
+
+Record = tuple[str, float, float, float, float, str]
 
 
 def safe_json(url: str) -> dict[str, Any]:
     try:
-        resp = requests.get(url, timeout=10)
+        resp: requests.Response = requests.get(url, timeout=10)
         if resp.status_code == 200:
             return resp.json()
     except Exception:
@@ -23,34 +25,35 @@ def safe_json(url: str) -> dict[str, Any]:
 
 
 def fetch_yahoo_chart(range_str: str = "1d") -> dict[str, Any]:
-    url = f"https://query1.finance.yahoo.com/v8/finance/chart/%5EIXIC?range={range_str}&interval=1d"
-    resp = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=10)
+    url: str = f"https://query1.finance.yahoo.com/v8/finance/chart/%5EIXIC?range={range_str}&interval=1d"
+    resp: requests.Response = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=10)
     return resp.json()
 
 
-def load_history() -> list[tuple[str, float, float, float, float, str]]:
+def load_history() -> list[Record]:
     if not os.path.exists(HISTORY_FILE):
         return []
     with open(HISTORY_FILE, "r", encoding="utf-8") as f:
-        return [
-            (
-                row["date"],
-                float(row["close"]),
-                float(row.get("change", "0")),
-                float(row.get("pct", "0")),
-                float(row.get("z_score", "0")),
-                row.get("fetch_time", ""),
-            )
-            for row in csv.DictReader(f)
-        ]
+        rows: list[dict[str, str]] = list(csv.DictReader(f))
+    result: list[Record] = []
+    for row in rows:
+        result.append((
+            row["date"],
+            float(row["close"]),
+            float(row.get("change", "0")),
+            float(row.get("pct", "0")),
+            float(row.get("z_score", "0")),
+            row.get("fetch_time", ""),
+        ))
+    return result
 
 
-def save_history(records: list[tuple]) -> None:
+def save_history(records: list[Record]) -> None:
     with open(HISTORY_FILE, "w", newline="", encoding="utf-8") as f:
         w = csv.writer(f)
         w.writerow(["date", "close", "change", "pct", "z_score", "fetch_time"])
         for r in records:
-            fetch_time = r[5] if len(r) > 5 else ""
+            fetch_time: str = r[5] if len(r) > 5 else ""
             w.writerow([r[0], f"{r[1]:.2f}", f"{r[2]:.2f}", f"{r[3]:.2f}", f"{r[4]:.2f}", fetch_time])
 
 
@@ -88,16 +91,18 @@ def save_memory(mem: dict[str, Any]) -> None:
 def init_history() -> None:
     if load_history():
         return
-    data = fetch_yahoo_chart("5y")
-    results = data["chart"]["result"][0]
+    data: dict[str, Any] = fetch_yahoo_chart("5y")
+    results: dict[str, Any] = data["chart"]["result"][0]
     pcts: list[float] = []
-    records: list[tuple] = []
+    records: list[Record] = []
     prev: float | None = None
-    for ts, c in zip(results["timestamp"], results["indicators"]["quote"][0]["close"]):
+    timestamps: list[int] = results["timestamp"]
+    quotes: list[float | None] = results["indicators"]["quote"][0]["close"]
+    for ts, c in zip(timestamps, quotes):
         if c is not None:
-            date = datetime.fromtimestamp(ts, tz=timezone.utc).strftime("%Y-%m-%d")
-            chg = c - prev if prev else 0
-            pct = chg / prev * 100 if prev else 0
+            date: str = datetime.fromtimestamp(ts, tz=timezone.utc).strftime("%Y-%m-%d")
+            chg: float = c - prev if prev else 0
+            pct: float = chg / prev * 100 if prev else 0
             pcts.append(pct)
             from modules.analyzer import calc_z_score
             records.append((date, c, chg, pct, calc_z_score(pcts), ""))
@@ -109,34 +114,34 @@ def init_history() -> None:
 def get_today_data(multiplier: float = 1.0) -> tuple[str, float, str, float, float, float]:
     from modules.analyzer import calc_z_score, describe_z
 
-    data = fetch_yahoo_chart("1d")
-    results = data["chart"]["result"][0]
-    meta = results["meta"]
-    closes = results["indicators"]["quote"][0]["close"]
+    data: dict[str, Any] = fetch_yahoo_chart("1d")
+    results: dict[str, Any] = data["chart"]["result"][0]
+    meta: dict[str, Any] = results["meta"]
+    closes: list[float | None] = results["indicators"]["quote"][0]["close"]
 
-    latest_close = meta.get("regularMarketPrice")
+    latest_close: float | None = meta.get("regularMarketPrice")
     if latest_close is None:
-        valid = [c for c in closes if c is not None]
+        valid: list[float] = [c for c in closes if c is not None]
         latest_close = valid[-1]
     latest_close = float(latest_close)
 
-    prev_close = float(meta.get("chartPreviousClose", 0))
+    prev_close: float = float(meta.get("chartPreviousClose", 0))
     if not prev_close:
         valid = [c for c in closes if c is not None]
         prev_close = valid[-2] if len(valid) >= 2 else latest_close
 
-    change = latest_close - prev_close
-    pct = change / prev_close * 100
-    data_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    direction = "📈 涨" if change >= 0 else "📉 跌"
+    change: float = latest_close - prev_close
+    pct: float = change / prev_close * 100
+    data_date: str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    direction: str = "📈 涨" if change >= 0 else "📉 跌"
 
-    records = load_history()
-    hist_pcts = [r[3] for r in records]
-    window = hist_pcts[-(20 - 1):] + [pct]
-    z_score = calc_z_score(window)
-    level = describe_z(z_score, multiplier)
+    records: list[Record] = load_history()
+    hist_pcts: list[float] = [r[3] for r in records]
+    window: list[float] = hist_pcts[-(20 - 1):] + [pct]
+    z_score: float = calc_z_score(window)
+    level: str = describe_z(z_score, multiplier)
 
-    msg = (
+    msg: str = (
         f"纳斯达克指数收于 {latest_close:.2f} 点，"
         f"较前一交易日{direction} {abs(change):.2f} 点，涨跌幅 {pct:+.2f}%。\n"
         f"数据日期 {data_date}，异常度 Z = {z_score:.2f}（{level}）"

@@ -1,9 +1,11 @@
-import json, os
+import json
+import os
+from typing import Any
 
-CONFIG_FILE = "threshold_config.json"
+CONFIG_FILE: str = "threshold_config.json"
 
 
-def load_config():
+def load_config() -> dict[str, Any]:
     if not os.path.exists(CONFIG_FILE):
         return {"sensitivity_multiplier": 1.0}
     with open(CONFIG_FILE) as f:
@@ -11,7 +13,10 @@ def load_config():
 
 
 if __name__ == "__main__":
-    body = os.environ.get("BODY", "")
+    body: str = os.environ.get("BODY", "")
+
+    action: str = ""
+    delta: float = 0.0
 
     if "降低" in body:
         action = "降低敏感度"
@@ -23,7 +28,7 @@ if __name__ == "__main__":
         print("未识别到关键词，跳过")
         exit(0)
 
-    config = load_config()
+    config: dict[str, Any] = load_config()
     config["sensitivity_multiplier"] = round(
         max(0.5, min(3.0, config["sensitivity_multiplier"] + delta)), 1
     )
@@ -31,8 +36,8 @@ if __name__ == "__main__":
     with open(CONFIG_FILE, "w") as f:
         json.dump(config, f, indent=2)
 
-    new_val = config["sensitivity_multiplier"]
-    gh_out = os.environ.get("GITHUB_OUTPUT")
+    new_val: float = config["sensitivity_multiplier"]
+    gh_out: str | None = os.environ.get("GITHUB_OUTPUT")
     if gh_out:
         with open(gh_out, "a") as f:
             f.write("action<<EOF\n")

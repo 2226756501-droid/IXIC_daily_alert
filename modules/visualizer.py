@@ -4,14 +4,14 @@ from plotly.subplots import make_subplots
 
 
 def plot_price_history(df: pd.DataFrame) -> go.Figure:
-    fig = go.Figure()
+    fig: go.Figure = go.Figure()
     fig.add_trace(go.Scatter(
         x=df["date"], y=df["close"],
         mode="lines", name="收盘价",
         line=dict(color="#1f77b4", width=2),
     ))
-    colors = ["#e74c3c" if z < -2 else "#2ecc71" if z > 2 else "#1f77b4"
-              for z in df["z_score"]]
+    colors: list[str] = ["#e74c3c" if z < -2 else "#2ecc71" if z > 2 else "#1f77b4"
+                         for z in df["z_score"]]
     fig.add_trace(go.Scatter(
         x=df["date"], y=df["close"],
         mode="markers", name="异常点",
@@ -27,8 +27,8 @@ def plot_price_history(df: pd.DataFrame) -> go.Figure:
 
 
 def plot_z_score(df: pd.DataFrame) -> go.Figure:
-    fig = go.Figure()
-    colors = ["#e74c3c" if abs(z) >= 2 else "#3498db" for z in df["z_score"]]
+    fig: go.Figure = go.Figure()
+    colors: list[str] = ["#e74c3c" if abs(z) >= 2 else "#3498db" for z in df["z_score"]]
     fig.add_trace(go.Bar(
         x=df["date"], y=df["z_score"],
         marker_color=colors, name="Z-score",
@@ -44,9 +44,9 @@ def plot_z_score(df: pd.DataFrame) -> go.Figure:
 
 
 def plot_comparison_chart(df: pd.DataFrame) -> go.Figure:
-    fig = make_subplots(rows=2, cols=1,
-                        subplot_titles=("涨跌幅", "Z-score 异常度"),
-                        vertical_spacing=0.15)
+    fig: go.Figure = make_subplots(rows=2, cols=1,
+                                   subplot_titles=("涨跌幅", "Z-score 异常度"),
+                                   vertical_spacing=0.15)
     fig.add_trace(go.Scatter(
         x=df["date"], y=df["pct"], mode="lines+markers",
         name="涨跌幅", line=dict(color="#1f77b4"),
@@ -64,13 +64,13 @@ def plot_comparison_chart(df: pd.DataFrame) -> go.Figure:
 
 
 def plot_drawdown_analysis(df: pd.DataFrame) -> go.Figure:
-    closes = df["close"].values
-    peak = pd.Series(closes).expanding().max()
-    drawdown = (closes - peak) / peak * 100
+    closes: pd.Series = df["close"].values
+    peak: pd.Series = pd.Series(closes).expanding().max()
+    drawdown: pd.Series = (closes - peak) / peak * 100
     df = df.copy()
     df["drawdown"] = drawdown
 
-    fig = go.Figure()
+    fig: go.Figure = go.Figure()
     fig.add_trace(go.Scatter(
         x=df["date"], y=df["close"],
         mode="lines", name="收盘价",
@@ -96,7 +96,7 @@ def plot_drawdown_analysis(df: pd.DataFrame) -> go.Figure:
 
 
 def plot_statistics(df: pd.DataFrame) -> go.Figure:
-    fig = make_subplots(
+    fig: go.Figure = make_subplots(
         rows=2, cols=2,
         subplot_titles=("收盘价分布", "涨跌幅分布", "月度收益率", "周度收益率分布"),
         vertical_spacing=0.15, horizontal_spacing=0.1,
@@ -106,12 +106,12 @@ def plot_statistics(df: pd.DataFrame) -> go.Figure:
 
     df["month"] = pd.to_datetime(df["date"]).dt.month
     df["weekday"] = pd.to_datetime(df["date"]).dt.dayofweek
-    monthly_avg = df.groupby("month")["pct"].mean()
+    monthly_avg: pd.Series = df.groupby("month")["pct"].mean()
     fig.add_trace(go.Bar(x=monthly_avg.index, y=monthly_avg.values,
                          name="月均涨跌幅", marker_color="#e74c3c"), row=2, col=1)
 
-    weekdays = ["周一", "周二", "周三", "周四", "周五"]
-    weekly_data = [df[df["weekday"] == i]["pct"].dropna() for i in range(5)]
+    weekdays: list[str] = ["周一", "周二", "周三", "周四", "周五"]
+    weekly_data: list[pd.Series] = [df[df["weekday"] == i]["pct"].dropna() for i in range(5)]
     fig.add_trace(go.Box(y=weekly_data, name="周度分布", marker_color="#9b59b6"), row=2, col=2)
 
     fig.update_layout(height=600, template="plotly_white", showlegend=False)

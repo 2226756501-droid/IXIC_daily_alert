@@ -1,5 +1,6 @@
 import os
 from pathlib import Path
+from typing import Any
 
 try:
     from dotenv import load_dotenv
@@ -7,14 +8,14 @@ try:
 except ImportError:
     pass
 
-BASE_DIR = Path(__file__).resolve().parent.parent
+BASE_DIR: Path = Path(__file__).resolve().parent.parent
 
 
 def get_env(key: str, default: str = "") -> str:
     return os.environ.get(key, default)
 
 
-def get_email_config() -> dict:
+def get_email_config() -> dict[str, Any]:
     return {
         "server": get_env("SMTP_SERVER", "smtp.qq.com"),
         "port": int(get_env("SMTP_PORT", "465")),
