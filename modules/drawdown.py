@@ -43,11 +43,3 @@ def calc_max_drawdown_3m():
         "max_drawdown_pct": round(max_dd * 100, 2),
         "date": max_dd_date,
     }
-
-
-if __name__ == "__main__":
-    result = calc_max_drawdown_3m()
-    if result:
-        print(f"近3月最大回撤: {result['max_drawdown_pct']}%（{result['date']}）")
-    else:
-        print("数据不足")

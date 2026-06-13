@@ -16,6 +16,8 @@ from modules.visualizer import (
     plot_drawdown_analysis,
     plot_statistics,
 )
+from datetime import date
+from modules.holidays import is_market_open, next_holiday, next_market_day
 
 GITHUB_RAW = "https://raw.githubusercontent.com/2226756501-droid/IXIC_daily_alert/main"
 HISTORY_URL = f"{GITHUB_RAW}/history.csv"
@@ -32,8 +34,17 @@ def load_data():
     return df
 
 
-st.set_page_config(page_title="NASDAQ 智能监控", page_icon="📊", layout="wide")
-st.title("📊 NASDAQ 智能监控系统")
+st.set_page_config(page_title="NASDAQ 智能监控", page_icon="📊", layout="wide", initial_sidebar_state="auto")
+st.markdown("""
+<style>
+    .block-container { padding: 1rem 1rem 2rem; }
+    @media (max-width: 640px) {
+        .block-container { padding: 0.5rem; }
+        div[data-testid="column"] { min-width: 50% !important; }
+    }
+</style>
+""", unsafe_allow_html=True)
+st.title("📊 NASDAQ 智能监控")
 st.caption("数据源：GitHub 实时同步（云端每日自动更新）")
 
 df = load_data()
@@ -56,6 +67,20 @@ with col3:
 with col4:
     drops = state.get("consecutive_drops", 0)
     st.metric("连续下跌", f"{drops}天", state.get("state", "normal"))
+
+today = date.today()
+if not is_market_open(today):
+    h_date, h_name = next_holiday(today)
+    if h_date == today:
+        st.warning(f"🔴 今日美股休市（{h_name}），数据不更新")
+    else:
+        next_open = next_market_day(today)
+        st.info(f"💤 今日非交易日，下一个交易日：{next_open}")
+else:
+    h_date, h_name = next_holiday(today)
+    if h_date:
+        days_until = (h_date - today).days
+        st.caption(f"📅 下一个休市日：{h_date}（{h_name}），还有 {days_until} 天")
 
 tab1, tab2, tab3, tab4, tab5 = st.tabs([
     "📈 行情走势", "📊 统计分析", "📉 回撤分析", "📰 新闻", "⚙️ 异常事件"

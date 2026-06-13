@@ -11,6 +11,7 @@ from modules.data_fetcher import (
 )
 from modules.analyzer import record_abnormal, finalize_abnormal, build_memory_advice
 from modules.news_fetcher import fetch_nasdaq_news
+from modules.config import get_email_config
 
 
 def main():
@@ -47,7 +48,7 @@ def main():
                 body += "\n────\n📰 今日相关新闻：\n" + "\n".join(f"{i+1}. {h}" for i, h in enumerate(news))
 
         elif drops >= 4:
-            from calc_drawdown import calc_max_drawdown_3m
+            from modules.drawdown import calc_max_drawdown_3m
             dd = calc_max_drawdown_3m()
             if dd:
                 state["max_drawdown_3m"] = dd
@@ -86,19 +87,15 @@ def send_email(subject: str, body: str) -> None:
     import smtplib
     from email.mime.text import MIMEText
 
-    smtp_server = os.environ.get("SMTP_SERVER", "smtp.qq.com")
-    smtp_port = int(os.environ.get("SMTP_PORT", "465"))
-    email_user = os.environ.get("EMAIL_USER")
-    email_pass = os.environ.get("EMAIL_PASS")
-    notify_email = os.environ.get("NOTIFY_EMAIL", email_user)
-    if not email_user or not email_pass:
+    cfg = get_email_config()
+    if not cfg["user"] or not cfg["password"]:
         return
     msg = MIMEText(body, "plain", "utf-8")
     msg["Subject"] = subject
-    msg["From"] = email_user
-    msg["To"] = notify_email
-    with smtplib.SMTP_SSL(smtp_server, smtp_port) as server:
-        server.login(email_user, email_pass)
+    msg["From"] = cfg["user"]
+    msg["To"] = cfg["notify"]
+    with smtplib.SMTP_SSL(cfg["server"], cfg["port"]) as server:
+        server.login(cfg["user"], cfg["password"])
         server.send_message(msg)
 
 
