@@ -3,7 +3,8 @@ import logging
 import os
 import sys
 from datetime import date
-from typing import Any, Callable
+from io import StringIO
+from typing import Any
 
 sys.path.insert(0, os.path.dirname(__file__))
 
@@ -41,9 +42,22 @@ CACHE_CONFIG: str = os.path.join(CACHE_DIR, "threshold_config.json")
 USING_CACHE: dict[str, bool] = {}
 
 
-def ensure_cache_dir() -> None:
-    if not os.path.exists(CACHE_DIR):
-        os.makedirs(CACHE_DIR)
+def try_write_cache(content: str, path: str) -> None:
+    try:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(content)
+    except Exception:
+        pass
+
+
+def try_write_json_cache(data: dict, path: str) -> None:
+    try:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2)
+    except Exception:
+        pass
 
 
 def fetch_csv_with_cache(url: str, cache_path: str) -> pd.DataFrame | None:
@@ -51,9 +65,9 @@ def fetch_csv_with_cache(url: str, cache_path: str) -> pd.DataFrame | None:
         resp: requests.Response = requests.get(url, timeout=10)
         resp.raise_for_status()
         content: str = resp.text
-        with open(cache_path, "w", encoding="utf-8") as f:
-            f.write(content)
-        df: pd.DataFrame = pd.read_csv(cache_path)
+        try_write_cache(content, cache_path)
+        from io import StringIO
+        df: pd.DataFrame = pd.read_csv(StringIO(content))
         df["date"] = pd.to_datetime(df["date"], format="mixed")
         df = df.sort_values("date").reset_index(drop=True)
         return df
@@ -73,8 +87,7 @@ def fetch_json_with_cache(url: str, cache_path: str) -> dict[str, Any]:
         resp: requests.Response = requests.get(url, timeout=10)
         resp.raise_for_status()
         data: dict[str, Any] = resp.json()
-        with open(cache_path, "w", encoding="utf-8") as f:
-            json.dump(data, f, indent=2)
+        try_write_json_cache(data, cache_path)
         return data
     except Exception:
         logger.warning("GitHub raw 加载失败：%s，尝试本地缓存", url)
@@ -83,9 +96,6 @@ def fetch_json_with_cache(url: str, cache_path: str) -> dict[str, Any]:
             with open(cache_path, encoding="utf-8") as f:
                 return json.load(f)
         return {}
-
-
-ensure_cache_dir()
 
 df: pd.DataFrame | None = fetch_csv_with_cache(HISTORY_URL, CACHE_HISTORY)
 if df is None:
