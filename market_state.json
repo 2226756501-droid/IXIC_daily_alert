@@ -1,3 +1,4 @@
 {
-  "sensitivity_multiplier": 2.0
+  "sensitivity_multiplier": 2.0,
+  "consecutive_drops": 0
 }
