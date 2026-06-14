@@ -3,14 +3,19 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
 
-def plot_price_history(df: pd.DataFrame) -> go.Figure:
+def _threshold(multiplier: float = 1.0) -> float:
+    return 2 * multiplier
+
+
+def plot_price_history(df: pd.DataFrame, multiplier: float = 1.0) -> go.Figure:
+    t: float = _threshold(multiplier)
     fig: go.Figure = go.Figure()
     fig.add_trace(go.Scatter(
         x=df["date"], y=df["close"],
         mode="lines", name="收盘价",
         line=dict(color="#1f77b4", width=2),
     ))
-    colors: list[str] = ["#e74c3c" if z < -2 else "#2ecc71" if z > 2 else "#1f77b4"
+    colors: list[str] = ["#e74c3c" if z < -t else "#2ecc71" if z > t else "#1f77b4"
                          for z in df["z_score"]]
     fig.add_trace(go.Scatter(
         x=df["date"], y=df["close"],
@@ -26,15 +31,16 @@ def plot_price_history(df: pd.DataFrame) -> go.Figure:
     return fig
 
 
-def plot_z_score(df: pd.DataFrame) -> go.Figure:
+def plot_z_score(df: pd.DataFrame, multiplier: float = 1.0) -> go.Figure:
+    t: float = _threshold(multiplier)
     fig: go.Figure = go.Figure()
-    colors: list[str] = ["#e74c3c" if abs(z) >= 2 else "#3498db" for z in df["z_score"]]
+    colors: list[str] = ["#e74c3c" if abs(z) >= t else "#3498db" for z in df["z_score"]]
     fig.add_trace(go.Bar(
         x=df["date"], y=df["z_score"],
         marker_color=colors, name="Z-score",
     ))
-    fig.add_hline(y=2, line_dash="dash", line_color="red", annotation_text="+2σ")
-    fig.add_hline(y=-2, line_dash="dash", line_color="red", annotation_text="-2σ")
+    fig.add_hline(y=t, line_dash="dash", line_color="red", annotation_text=f"+{t}σ")
+    fig.add_hline(y=-t, line_dash="dash", line_color="red", annotation_text=f"-{t}σ")
     fig.update_layout(
         template="plotly_white", height=300,
         hovermode="x unified",
@@ -43,7 +49,8 @@ def plot_z_score(df: pd.DataFrame) -> go.Figure:
     return fig
 
 
-def plot_comparison_chart(df: pd.DataFrame) -> go.Figure:
+def plot_comparison_chart(df: pd.DataFrame, multiplier: float = 1.0) -> go.Figure:
+    t: float = _threshold(multiplier)
     fig: go.Figure = make_subplots(rows=2, cols=1,
                                    subplot_titles=("涨跌幅", "Z-score 异常度"),
                                    vertical_spacing=0.15)
@@ -55,10 +62,10 @@ def plot_comparison_chart(df: pd.DataFrame) -> go.Figure:
     fig.add_trace(go.Bar(
         x=df["date"], y=df["z_score"],
         name="Z-score",
-        marker_color=["#e74c3c" if abs(z) >= 2 else "#3498db" for z in df["z_score"]],
+        marker_color=["#e74c3c" if abs(z) >= t else "#3498db" for z in df["z_score"]],
     ), row=2, col=1)
-    fig.add_hline(y=2, line_dash="dash", line_color="red", row=2, col=1)
-    fig.add_hline(y=-2, line_dash="dash", line_color="red", row=2, col=1)
+    fig.add_hline(y=t, line_dash="dash", line_color="red", row=2, col=1)
+    fig.add_hline(y=-t, line_dash="dash", line_color="red", row=2, col=1)
     fig.update_layout(height=500, template="plotly_white", hovermode="x unified")
     return fig
 

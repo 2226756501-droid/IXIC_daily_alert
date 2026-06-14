@@ -1,10 +1,15 @@
 import csv
 import json
+import logging
 import os
 from datetime import datetime, timezone
 from typing import Any
 
 import requests
+
+from modules.stats import calc_z_score, describe_z
+
+logger: logging.Logger = logging.getLogger(__name__)
 
 HISTORY_FILE: str = os.path.join(os.path.dirname(os.path.dirname(__file__)), "history.csv")
 CONFIG_FILE: str = os.path.join(os.path.dirname(os.path.dirname(__file__)), "threshold_config.json")
@@ -31,7 +36,7 @@ def fetch_yahoo_chart(range_str: str = "1d") -> dict[str, Any]:
         resp.raise_for_status()
         return resp.json()
     except requests.RequestException as e:
-        print(f"!! Yahoo Finance API 请求失败：{e}")
+        logger.warning("Yahoo Finance API 请求失败：%s", e)
         return {}
 
 
@@ -95,10 +100,11 @@ def save_memory(mem: dict[str, Any]) -> None:
 
 def init_history() -> None:
     if load_history():
+        logger.info("历史数据已存在，跳过初始化")
         return
     data: dict[str, Any] = fetch_yahoo_chart("5y")
     if not data.get("chart", {}).get("result"):
-        print("!! 获取历史数据失败，跳过初始化")
+        logger.warning("获取历史数据失败，跳过初始化")
         return
     results: dict[str, Any] = data["chart"]["result"][0]
     pcts: list[float] = []
@@ -112,19 +118,16 @@ def init_history() -> None:
             chg: float = c - prev if prev else 0
             pct: float = chg / prev * 100 if prev else 0
             pcts.append(pct)
-            from modules.analyzer import calc_z_score
             records.append((date, c, chg, pct, calc_z_score(pcts), ""))
             prev = c
     save_history(records)
-    print(f">> 历史数据已初始化，共 {len(records)} 条")
+    logger.info("历史数据已初始化，共 %s 条", len(records))
 
 
 def get_today_data(multiplier: float = 1.0) -> tuple[str, float, str, float, float, float]:
-    from modules.analyzer import calc_z_score, describe_z
-
     data: dict[str, Any] = fetch_yahoo_chart("1d")
     if not data.get("chart", {}).get("result"):
-        print("!! 获取今日数据失败，使用本地缓存")
+        logger.warning("获取今日数据失败，使用本地缓存")
         records_cache: list[Record] = load_history()
         if records_cache:
             last: Record = records_cache[-1]

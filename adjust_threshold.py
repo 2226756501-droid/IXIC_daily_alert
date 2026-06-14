@@ -4,6 +4,9 @@ from typing import Any
 
 CONFIG_FILE: str = "threshold_config.json"
 
+INCREASE_KEYWORDS: list[str] = ["提高", "调高", "调大", "增加", "加大", "升"]
+DECREASE_KEYWORDS: list[str] = ["降低", "调低", "调小", "减少", "减小", "降"]
+
 
 def load_config() -> dict[str, Any]:
     if not os.path.exists(CONFIG_FILE):
@@ -18,13 +21,20 @@ if __name__ == "__main__":
     action: str = ""
     delta: float = 0.0
 
-    if "降低" in body:
-        action = "降低敏感度"
-        delta = 0.5
-    elif "提高" in body:
-        action = "提高敏感度"
-        delta = -0.5
-    else:
+    for kw in DECREASE_KEYWORDS:
+        if kw in body:
+            action = "降低敏感度"
+            delta = 0.5
+            break
+
+    if not action:
+        for kw in INCREASE_KEYWORDS:
+            if kw in body:
+                action = "提高敏感度"
+                delta = -0.5
+                break
+
+    if not action:
         print("未识别到关键词，跳过")
         exit(0)
 

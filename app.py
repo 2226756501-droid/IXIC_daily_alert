@@ -1,3 +1,4 @@
+import logging
 import sys
 import os
 from datetime import date
@@ -5,11 +6,14 @@ from typing import Any
 
 sys.path.insert(0, os.path.dirname(__file__))
 
+logging.basicConfig(level=logging.WARNING)
+logger: logging.Logger = logging.getLogger(__name__)
+
 import streamlit as st
 import pandas as pd
 
 from modules.data_fetcher import safe_json
-from modules.analyzer import describe_z
+from modules.stats import describe_z
 from modules.news_fetcher import fetch_nasdaq_news
 from modules.visualizer import (
     plot_price_history,
@@ -92,13 +96,13 @@ tab1, tab2, tab3, tab4, tab5 = st.tabs([
 with tab1:
     st.subheader("近 90 日走势")
     df_90d: pd.DataFrame = df[df["date"] >= df["date"].max() - pd.Timedelta(days=90)]
-    st.plotly_chart(plot_price_history(df_90d), use_container_width=True)
+    st.plotly_chart(plot_price_history(df_90d, multiplier), use_container_width=True)
 
     st.subheader("Z-score 异常检测")
-    st.plotly_chart(plot_z_score(df_90d), use_container_width=True)
+    st.plotly_chart(plot_z_score(df_90d, multiplier), use_container_width=True)
 
     st.subheader("涨跌幅 & Z-score 对比")
-    st.plotly_chart(plot_comparison_chart(df_90d), use_container_width=True)
+    st.plotly_chart(plot_comparison_chart(df_90d, multiplier), use_container_width=True)
 
 with tab2:
     st.subheader("📊 数据统计")

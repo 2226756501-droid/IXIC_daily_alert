@@ -1,7 +1,10 @@
 import csv
+import logging
 import os
 from datetime import datetime, timedelta, timezone
 from typing import Any
+
+logger: logging.Logger = logging.getLogger(__name__)
 
 HISTORY_FILE: str = os.path.join(os.path.dirname(os.path.dirname(__file__)), "history.csv")
 
@@ -11,6 +14,7 @@ def calc_max_drawdown_3m() -> dict[str, Any] | None:
         with open(HISTORY_FILE, "r", encoding="utf-8") as f:
             rows: list[dict[str, str]] = list(csv.DictReader(f))
     except FileNotFoundError:
+        logger.warning("回撤计算：history.csv 不存在")
         return None
 
     cutoff: datetime = datetime.now(timezone.utc) - timedelta(days=90)

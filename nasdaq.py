@@ -1,3 +1,4 @@
+import logging
 import os
 import sys
 from datetime import datetime, timezone
@@ -5,12 +6,19 @@ from typing import Any
 
 sys.path.insert(0, os.path.dirname(__file__))
 
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+)
+logger: logging.Logger = logging.getLogger("nasdaq")
+
 from modules.data_fetcher import (
     init_history, load_history, save_history,
     load_config, load_market_state, save_market_state,
     load_memory, save_memory, get_today_data, Record,
 )
-from modules.analyzer import record_abnormal, finalize_abnormal, build_memory_advice
+from modules.analyzer import record_abnormal, finalize_abnormal
+from modules.stats import build_memory_advice
 from modules.news_fetcher import fetch_nasdaq_news
 from modules.config import get_email_config
 
@@ -26,14 +34,14 @@ def main() -> None:
     change: float
     z_score: float
     msg, pct, data_date, close, change, z_score = get_today_data(multiplier)
-    print(msg)
+    logger.info(msg)
 
     records: list[Record] = load_history()
     if not records or records[-1][0] != data_date:
         fetch_time: str = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
         records.append((data_date, close, change, pct, z_score, fetch_time))
         save_history(records)
-        print(f">> 已记录 {data_date} 数据")
+        logger.info("已记录 %s 数据", data_date)
 
     state: dict[str, Any] = load_market_state()
     is_down: bool = pct < 0
@@ -87,7 +95,7 @@ def main() -> None:
             body += "\n" + advice
 
     send_email(subject, body)
-    print(">> 邮件已发送")
+    logger.info("邮件已发送")
 
 
 def send_email(subject: str, body: str) -> None:
@@ -96,6 +104,7 @@ def send_email(subject: str, body: str) -> None:
 
     cfg: dict[str, Any] = get_email_config()
     if not cfg["user"] or not cfg["password"]:
+        logger.warning("邮箱未配置，跳过发送")
         return
     msg: Any = MIMEText(body, "plain", "utf-8")
     msg["Subject"] = subject

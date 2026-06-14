@@ -1,5 +1,8 @@
+import logging
 from datetime import date, timedelta
 from typing import Any
+
+logger: logging.Logger = logging.getLogger(__name__)
 
 
 US_MARKET_HOLIDAYS_2026: list[date] = [
