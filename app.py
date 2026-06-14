@@ -1,14 +1,16 @@
+import json
 import logging
-import sys
 import os
+import sys
 from datetime import date
-from typing import Any
+from typing import Any, Callable
 
 sys.path.insert(0, os.path.dirname(__file__))
 
 logging.basicConfig(level=logging.WARNING)
 logger: logging.Logger = logging.getLogger(__name__)
 
+import requests
 import streamlit as st
 import pandas as pd
 
@@ -30,14 +32,73 @@ STATE_URL: str = f"{GITHUB_RAW}/market_state.json"
 MEMORY_URL: str = f"{GITHUB_RAW}/memory.json"
 CONFIG_URL: str = f"{GITHUB_RAW}/threshold_config.json"
 
+CACHE_DIR: str = os.path.join(os.path.dirname(__file__), "cache")
+CACHE_HISTORY: str = os.path.join(CACHE_DIR, "history.csv")
+CACHE_STATE: str = os.path.join(CACHE_DIR, "market_state.json")
+CACHE_MEMORY: str = os.path.join(CACHE_DIR, "memory.json")
+CACHE_CONFIG: str = os.path.join(CACHE_DIR, "threshold_config.json")
 
-@st.cache_data(ttl=300)
-def load_data() -> pd.DataFrame:
-    df: pd.DataFrame = pd.read_csv(HISTORY_URL)
-    df["date"] = pd.to_datetime(df["date"], format="mixed")
-    df = df.sort_values("date").reset_index(drop=True)
-    return df
+USING_CACHE: dict[str, bool] = {}
 
+
+def ensure_cache_dir() -> None:
+    if not os.path.exists(CACHE_DIR):
+        os.makedirs(CACHE_DIR)
+
+
+def fetch_csv_with_cache(url: str, cache_path: str) -> pd.DataFrame | None:
+    try:
+        resp: requests.Response = requests.get(url, timeout=10)
+        resp.raise_for_status()
+        content: str = resp.text
+        with open(cache_path, "w", encoding="utf-8") as f:
+            f.write(content)
+        df: pd.DataFrame = pd.read_csv(cache_path)
+        df["date"] = pd.to_datetime(df["date"], format="mixed")
+        df = df.sort_values("date").reset_index(drop=True)
+        return df
+    except Exception:
+        logger.warning("GitHub raw 加载失败：%s，尝试本地缓存", url)
+        if os.path.exists(cache_path):
+            USING_CACHE["history"] = True
+            df = pd.read_csv(cache_path)
+            df["date"] = pd.to_datetime(df["date"], format="mixed")
+            df = df.sort_values("date").reset_index(drop=True)
+            return df
+        return None
+
+
+def fetch_json_with_cache(url: str, cache_path: str) -> dict[str, Any]:
+    try:
+        resp: requests.Response = requests.get(url, timeout=10)
+        resp.raise_for_status()
+        data: dict[str, Any] = resp.json()
+        with open(cache_path, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2)
+        return data
+    except Exception:
+        logger.warning("GitHub raw 加载失败：%s，尝试本地缓存", url)
+        if os.path.exists(cache_path):
+            USING_CACHE["json"] = True
+            with open(cache_path, encoding="utf-8") as f:
+                return json.load(f)
+        return {}
+
+
+ensure_cache_dir()
+
+df: pd.DataFrame | None = fetch_csv_with_cache(HISTORY_URL, CACHE_HISTORY)
+if df is None:
+    st.error("无法加载数据：GitHub 和本地缓存都不可用")
+    st.stop()
+
+state: dict[str, Any] = fetch_json_with_cache(STATE_URL, CACHE_STATE)
+memory: dict[str, Any] = fetch_json_with_cache(MEMORY_URL, CACHE_MEMORY)
+config: dict[str, Any] = fetch_json_with_cache(CONFIG_URL, CACHE_CONFIG)
+multiplier: float = config.get("sensitivity_multiplier", 1.0)
+
+if USING_CACHE:
+    st.warning("⚠️ GitHub raw 加载失败，使用本地缓存数据（可能不是最新）")
 
 st.set_page_config(page_title="NASDAQ 智能监控", page_icon="📊", layout="wide", initial_sidebar_state="auto")
 st.markdown("""
@@ -51,12 +112,6 @@ st.markdown("""
 """, unsafe_allow_html=True)
 st.title("📊 NASDAQ 智能监控")
 st.caption("数据源：GitHub 实时同步（云端每日自动更新）")
-
-df: pd.DataFrame = load_data()
-state: dict[str, Any] = safe_json(STATE_URL)
-memory: dict[str, Any] = safe_json(MEMORY_URL)
-config: dict[str, Any] = safe_json(CONFIG_URL)
-multiplier: float = config.get("sensitivity_multiplier", 1.0)
 
 latest: pd.Series = df.iloc[-1]
 z: float = latest["z_score"]
