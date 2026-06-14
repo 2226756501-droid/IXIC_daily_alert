@@ -21,18 +21,13 @@ from modules.analyzer import record_abnormal, finalize_abnormal
 from modules.stats import build_memory_advice
 from modules.news_fetcher import fetch_nasdaq_news
 from modules.config import get_email_config
+from modules.agent_engine import generate_email
 
 
 def main() -> None:
     init_history()
     config: dict[str, Any] = load_config()
     multiplier: float = config["sensitivity_multiplier"]
-    msg: str
-    pct: float
-    data_date: str
-    close: float
-    change: float
-    z_score: float
     msg, pct, data_date, close, change, z_score, open_, high_, low_ = get_today_data(multiplier)
     logger.info(msg)
 
@@ -45,12 +40,20 @@ def main() -> None:
 
     state: dict[str, Any] = load_market_state()
     is_down: bool = pct < 0
-    body: str = msg
-    subject: str = f"【纳斯达克数据】{data_date} 涨跌幅 {pct:+.2f}%"
+
+    # Collect context for AI email generation
+    ctx: dict[str, Any] = {
+        "msg": msg, "date": data_date, "pct": pct,
+        "close": close, "change": change, "z_score": z_score,
+        "is_down": is_down, "state": state.get("state", "normal"),
+        "drops": 0, "news": None, "drawdown": None,
+        "recovery": False, "advice": None,
+    }
 
     if is_down:
         state["consecutive_drops"] = state.get("consecutive_drops", 0) + 1
         drops: int = state["consecutive_drops"]
+        ctx["drops"] = drops
 
         if drops == 3 and state.get("state") == "normal":
             state["state"] = "abnormal"
@@ -58,21 +61,21 @@ def main() -> None:
             mem: dict[str, Any] = load_memory()
             mem = record_abnormal(mem, z_score, drops, close, pct, data_date)
             save_memory(mem)
-            news: list[str] = fetch_nasdaq_news()
-            if news:
-                body += "\n────\n📰 今日相关新闻：\n" + "\n".join(f"{i+1}. {h}" for i, h in enumerate(news))
+            news_list: list[str] = fetch_nasdaq_news()
+            ctx["news"] = news_list if news_list else None
 
         elif drops >= 4:
             from modules.drawdown import calc_max_drawdown_3m
             dd: dict[str, Any] | None = calc_max_drawdown_3m()
             if dd:
                 state["max_drawdown_3m"] = dd
-                body += f"\n────\n📉 近3月最大回撤：{dd['max_drawdown_pct']}%（{dd['date']}）"
-                subject = f"【异常时段】纳斯达克连跌{drops}天，近3月最大回撤 {dd['max_drawdown_pct']}%"
+                ctx["drawdown"] = dd
 
     else:
         if state.get("state") == "abnormal":
             drops = state.get("consecutive_drops", 0)
+            ctx["drops"] = drops
+            ctx["recovery"] = True
             state["state"] = "normal"
             state["abnormal_since"] = None
             state["consecutive_drops"] = 0
@@ -80,8 +83,6 @@ def main() -> None:
             mem = load_memory()
             mem = finalize_abnormal(mem, data_date, drops)
             save_memory(mem)
-            body += f"\n────\n✅ 异常时段结束（连跌{drops}天后恢复）"
-            subject = f"【纳斯达克数据】异常时段结束 - {data_date} 涨跌幅 {pct:+.2f}%"
         else:
             state["consecutive_drops"] = 0
 
@@ -92,10 +93,41 @@ def main() -> None:
         mem = load_memory()
         advice: str = build_memory_advice(mem.get("events", []), z_score, drops)
         if advice:
-            body += "\n" + advice
+            ctx["advice"] = advice
 
+    subject, body = build_email(ctx)
     send_email(subject, body)
     logger.info("邮件已发送")
+
+
+def build_email(ctx: dict[str, Any]) -> tuple[str, str]:
+    """Try AI generation first, fall back to template."""
+    result = generate_email(ctx)
+    if result:
+        logger.info("AI 生成邮件成功")
+        return result
+    logger.info("AI 邮件生成不可用，使用模板")
+    return _template_email(ctx)
+
+
+def _template_email(ctx: dict[str, Any]) -> tuple[str, str]:
+    """Template-based email as fallback."""
+    body: str = ctx["msg"]
+    subject: str = f"【纳斯达克数据】{ctx['date']} 涨跌幅 {ctx['pct']:+.2f}%"
+
+    if ctx.get("news"):
+        body += "\n────\n📰 今日相关新闻：\n" + "\n".join(f"{i+1}. {h}" for i, h in enumerate(ctx["news"]))
+    if ctx.get("drawdown"):
+        dd: dict[str, Any] = ctx["drawdown"]
+        body += f"\n────\n📉 近3月最大回撤：{dd['max_drawdown_pct']}%（{dd['date']}）"
+        subject = f"【异常时段】纳斯达克连跌{ctx['drops']}天，近3月最大回撤 {dd['max_drawdown_pct']}%"
+    if ctx.get("recovery"):
+        body += f"\n────\n✅ 异常时段结束（连跌{ctx['drops']}天后恢复）"
+        subject = f"【纳斯达克数据】异常时段结束 - {ctx['date']} 涨跌幅 {ctx['pct']:+.2f}%"
+    if ctx.get("advice"):
+        body += "\n" + ctx["advice"]
+
+    return subject, body
 
 
 def send_email(subject: str, body: str) -> None:

@@ -154,6 +154,76 @@ def _build_agent() -> tuple[Any, Any]:
     return agent, Runner
 
 
+def generate_email(ctx: dict[str, Any]) -> tuple[str, str] | None:
+    """Generate email subject and body using AI.
+    Returns (subject, body) or None if unavailable or fails.
+    """
+    if not is_available():
+        return None
+
+    prompt: str = _build_email_prompt(ctx)
+
+    try:
+        from openai import OpenAI
+        client = OpenAI(
+            api_key=get_deepseek_api_key(),
+            base_url=os.environ.get("DEEPSEEK_BASE_URL", "https://api.deepseek.com"),
+        )
+        response = client.chat.completions.create(
+            model="deepseek-v4-flash",
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=600,
+            temperature=0.7,
+        )
+        text: str = response.choices[0].message.content.strip()
+        lines: list[str] = text.split("\n", 1)
+        subject: str = lines[0].strip().rstrip(".")
+        body: str = lines[1].strip() if len(lines) > 1 else ""
+        if len(subject) > 60:
+            subject = subject[:57] + "..."
+        return subject, body
+    except Exception as e:
+        logger.warning("AI 邮件生成失败: %s", e)
+        return None
+
+
+def _build_email_prompt(ctx: dict[str, Any]) -> str:
+    lines: list[str] = [
+        "你是一名专业的金融编辑。请根据以下数据生成一封纳斯达克日报邮件。",
+        "",
+        "【今日数据】",
+        ctx["msg"],
+        "",
+        f"【市场状态】{'异常' if ctx.get('state') == 'abnormal' else '正常'}",
+        f"连跌天数: {ctx.get('drops', 0)}",
+    ]
+    if ctx.get("drawdown"):
+        dd: dict[str, Any] = ctx["drawdown"]
+        lines.append(f"近3月最大回撤: {dd['max_drawdown_pct']}% ({dd['date']})")
+    if ctx.get("recovery"):
+        lines.append(f"今日异常时段结束，连跌{ctx['drops']}天后恢复")
+    if ctx.get("news"):
+        lines.append("")
+        lines.append("【相关新闻】")
+        for h in ctx["news"]:
+            lines.append(f"- {h}")
+    if ctx.get("advice"):
+        lines.append("")
+        lines.append(f"【历史参考】{ctx['advice']}")
+
+    lines.extend([
+        "",
+        "【格式要求】",
+        "第一行作为邮件标题，不超过50个字",
+        "空一行后开始正文",
+        "正文用中文，专业但易懂，包含数据分析与市场解读",
+        "正文开头先写几个字概括今日走势，如\"小幅收涨\"\"明显回调\"",
+        "如果有异常信息，在正文中突出说明",
+        "正文最后一段写综合判断与建议",
+    ])
+    return "\n".join(lines)
+
+
 def chat(query: str, history: list[dict[str, str]] | None = None) -> str:
     if not is_available():
         return "⚠️ AI 功能未配置：请设置 DEEPSEEK_API_KEY"
