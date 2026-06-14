@@ -26,6 +26,7 @@ from modules.visualizer import (
     plot_statistics,
 )
 from modules.holidays import is_market_open, next_holiday, next_market_day
+from modules import agent_engine
 
 GITHUB_RAW: str = "https://raw.githubusercontent.com/2226756501-droid/IXIC_daily_alert/main"
 HISTORY_URL: str = f"{GITHUB_RAW}/history.csv"
@@ -154,8 +155,8 @@ else:
         days_until: int = (h_date - today).days
         st.caption(f"📅 下一个休市日：{h_date}（{h_name}），还有 {days_until} 天")
 
-tab1, tab2, tab3, tab4, tab5 = st.tabs([
-    "📈 行情走势", "📊 统计分析", "📉 回撤分析", "📰 新闻", "⚙️ 异常事件"
+tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
+    "📈 行情走势", "📊 统计分析", "📉 回撤分析", "📰 新闻", "⚙️ 异常事件", "🤖 AI 分析"
 ])
 
 with tab1:
@@ -219,3 +220,28 @@ with tab5:
 
     st.divider()
     st.caption(f"数据范围：{df['date'].min().strftime('%Y-%m-%d')} ~ {df['date'].max().strftime('%Y-%m-%d')}，共 {len(df)} 条记录")
+
+with tab6:
+    st.subheader("🤖 AI 分析助手")
+    st.caption("基于 DeepSeek V4 Flash，可查询实时数据、历史统计、新闻动态。")
+
+    if not agent_engine.is_available():
+        st.info("💡 AI 功能未配置。如需使用，请在 .env 或 Streamlit Secrets 中设置 DEEPSEEK_API_KEY。")
+
+    if "agent_messages" not in st.session_state:
+        st.session_state.agent_messages = []
+
+    for msg in st.session_state.agent_messages:
+        with st.chat_message(msg["role"]):
+            st.markdown(msg["content"])
+
+    if prompt := st.chat_input("问任何关于纳斯达克的问题…", disabled=not agent_engine.is_available()):
+        st.session_state.agent_messages.append({"role": "user", "content": prompt})
+        with st.chat_message("user"):
+            st.markdown(prompt)
+
+        with st.chat_message("assistant"):
+            with st.spinner("分析中…"):
+                response = agent_engine.chat(prompt, st.session_state.agent_messages[:-1])
+            st.markdown(response)
+            st.session_state.agent_messages.append({"role": "assistant", "content": response})
