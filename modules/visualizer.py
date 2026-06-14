@@ -7,6 +7,38 @@ def _threshold(multiplier: float = 1.0) -> float:
     return 2 * multiplier
 
 
+def plot_candlestick(df: pd.DataFrame, multiplier: float = 1.0) -> go.Figure:
+    has_ohlc = all(c in df.columns for c in ["open", "high", "low"])
+    fig: go.Figure = go.Figure()
+    if has_ohlc:
+        fig.add_trace(go.Candlestick(
+            x=df["date"], open=df["open"], high=df["high"],
+            low=df["low"], close=df["close"],
+            name="NASDAQ",
+            increasing_line_color="#2ecc71",
+            decreasing_line_color="#e74c3c",
+        ))
+        t: float = _threshold(multiplier)
+        ab_colors: list[str] = ["red" if abs(z) >= t else "transparent" for z in df["z_score"]]
+        fig.add_trace(go.Scatter(
+            x=df["date"], y=df["close"],
+            mode="markers", name="异常点",
+            marker=dict(color=ab_colors, size=6, symbol="circle"),
+            showlegend=False,
+        ))
+    else:
+        fig = plot_price_history(df, multiplier)
+        fig.update_layout(xaxis_rangeslider_visible=False)
+        return fig
+    fig.update_layout(
+        template="plotly_white", height=400,
+        hovermode="x unified",
+        xaxis_title="日期", yaxis_title="价格",
+        xaxis_rangeslider_visible=False,
+    )
+    return fig
+
+
 def plot_price_history(df: pd.DataFrame, multiplier: float = 1.0) -> go.Figure:
     t: float = _threshold(multiplier)
     fig: go.Figure = go.Figure()

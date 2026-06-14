@@ -19,7 +19,7 @@ from modules.data_fetcher import safe_json
 from modules.stats import describe_z
 from modules.news_fetcher import fetch_nasdaq_news
 from modules.visualizer import (
-    plot_price_history,
+    plot_candlestick,
     plot_z_score,
     plot_comparison_chart,
     plot_drawdown_analysis,
@@ -160,9 +160,9 @@ tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
 ])
 
 with tab1:
-    st.subheader("近 90 日走势")
+    st.subheader("近 90 日 K 线走势")
     df_90d: pd.DataFrame = df[df["date"] >= df["date"].max() - pd.Timedelta(days=90)]
-    st.plotly_chart(plot_price_history(df_90d, multiplier), use_container_width=True)
+    st.plotly_chart(plot_candlestick(df_90d, multiplier), use_container_width=True)
 
     st.subheader("Z-score 异常检测")
     st.plotly_chart(plot_z_score(df_90d, multiplier), use_container_width=True)
@@ -172,17 +172,26 @@ with tab1:
 
 with tab2:
     st.subheader("📊 数据统计")
-    st.plotly_chart(plot_statistics(df), use_container_width=True)
+    time_range: str = st.radio(
+        "时间范围", ["30天", "90天", "全部"],
+        horizontal=True, label_visibility="collapsed",
+    )
+    df_stats: pd.DataFrame = df
+    if time_range == "30天":
+        df_stats = df[df["date"] >= df["date"].max() - pd.Timedelta(days=30)]
+    elif time_range == "90天":
+        df_stats = df[df["date"] >= df["date"].max() - pd.Timedelta(days=90)]
+    st.plotly_chart(plot_statistics(df_stats), use_container_width=True)
 
     col_a, col_b = st.columns(2)
     with col_a:
-        close_stats: pd.Series = df["close"].describe()
+        close_stats: pd.Series = df_stats["close"].describe()
         st.metric("平均收盘", f"{close_stats['mean']:.0f}")
         st.metric("最高收盘", f"{close_stats['max']:.0f}")
         st.metric("最低收盘", f"{close_stats['min']:.0f}")
         st.metric("标准差", f"{close_stats['std']:.0f}")
     with col_b:
-        pct_stats: pd.Series = df["pct"].describe()
+        pct_stats: pd.Series = df_stats["pct"].describe()
         st.metric("平均涨跌幅", f"{pct_stats['mean']:.2f}%")
         st.metric("最大涨幅", f"{pct_stats['max']:.2f}%")
         st.metric("最大跌幅", f"{pct_stats['min']:.2f}%")

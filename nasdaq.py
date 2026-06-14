@@ -33,13 +33,13 @@ def main() -> None:
     close: float
     change: float
     z_score: float
-    msg, pct, data_date, close, change, z_score = get_today_data(multiplier)
+    msg, pct, data_date, close, change, z_score, open_, high_, low_ = get_today_data(multiplier)
     logger.info(msg)
 
     records: list[Record] = load_history()
     if not records or records[-1][0] != data_date:
         fetch_time: str = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
-        records.append((data_date, close, change, pct, z_score, fetch_time))
+        records.append((data_date, close, change, pct, z_score, open_, high_, low_, fetch_time))
         save_history(records)
         logger.info("已记录 %s 数据", data_date)
 

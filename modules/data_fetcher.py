@@ -16,7 +16,7 @@ CONFIG_FILE: str = os.path.join(os.path.dirname(os.path.dirname(__file__)), "thr
 STATE_FILE: str = os.path.join(os.path.dirname(os.path.dirname(__file__)), "market_state.json")
 MEMORY_FILE: str = os.path.join(os.path.dirname(os.path.dirname(__file__)), "memory.json")
 
-Record = tuple[str, float, float, float, float, str]
+Record = tuple[str, float, float, float, float, float, float, float, str]
 
 
 def safe_json(url: str) -> dict[str, Any]:
@@ -47,12 +47,15 @@ def load_history() -> list[Record]:
         rows: list[dict[str, str]] = list(csv.DictReader(f))
     result: list[Record] = []
     for row in rows:
+        c = float(row["close"])
         result.append((
-            row["date"],
-            float(row["close"]),
+            row["date"], c,
             float(row.get("change", "0")),
             float(row.get("pct", "0")),
             float(row.get("z_score", "0")),
+            float(row.get("open", str(c))),
+            float(row.get("high", str(c))),
+            float(row.get("low", str(c))),
             row.get("fetch_time", ""),
         ))
     return result
@@ -61,10 +64,14 @@ def load_history() -> list[Record]:
 def save_history(records: list[Record]) -> None:
     with open(HISTORY_FILE, "w", newline="", encoding="utf-8") as f:
         w = csv.writer(f)
-        w.writerow(["date", "close", "change", "pct", "z_score", "fetch_time"])
+        w.writerow(["date", "close", "change", "pct", "z_score", "open", "high", "low", "fetch_time"])
         for r in records:
-            fetch_time: str = r[5] if len(r) > 5 else ""
-            w.writerow([r[0], f"{r[1]:.2f}", f"{r[2]:.2f}", f"{r[3]:.2f}", f"{r[4]:.2f}", fetch_time])
+            fetch_time: str = r[8] if len(r) > 8 else ""
+            open_ = r[5] if len(r) > 5 else r[1]
+            high_ = r[6] if len(r) > 6 else r[1]
+            low_ = r[7] if len(r) > 7 else r[1]
+            w.writerow([r[0], f"{r[1]:.2f}", f"{r[2]:.2f}", f"{r[3]:.2f}", f"{r[4]:.2f}",
+                       f"{open_:.2f}", f"{high_:.2f}", f"{low_:.2f}", fetch_time])
 
 
 def load_config() -> dict[str, Any]:
@@ -111,31 +118,42 @@ def init_history() -> None:
     records: list[Record] = []
     prev: float | None = None
     timestamps: list[int] = results["timestamp"]
-    quotes: list[float | None] = results["indicators"]["quote"][0]["close"]
-    for ts, c in zip(timestamps, quotes):
+    quote: dict[str, Any] = results["indicators"]["quote"][0]
+    closes: list[float | None] = quote["close"]
+    opens: list[float | None] = quote.get("open", [])
+    highs: list[float | None] = quote.get("high", [])
+    lows: list[float | None] = quote.get("low", [])
+    for i, (ts, c) in enumerate(zip(timestamps, closes)):
         if c is not None:
             date: str = datetime.fromtimestamp(ts, tz=timezone.utc).strftime("%Y-%m-%d")
             chg: float = c - prev if prev else 0
             pct: float = chg / prev * 100 if prev else 0
+            o: float = opens[i] if i < len(opens) and opens[i] is not None else c
+            h: float = highs[i] if i < len(highs) and highs[i] is not None else c
+            l: float = lows[i] if i < len(lows) and lows[i] is not None else c
             pcts.append(pct)
-            records.append((date, c, chg, pct, calc_z_score(pcts), ""))
+            records.append((date, c, chg, pct, calc_z_score(pcts), o, h, l, ""))
             prev = c
     save_history(records)
     logger.info("历史数据已初始化，共 %s 条", len(records))
 
 
-def get_today_data(multiplier: float = 1.0) -> tuple[str, float, str, float, float, float]:
+def get_today_data(multiplier: float = 1.0) -> tuple[str, float, str, float, float, float, float, float, float]:
     data: dict[str, Any] = fetch_yahoo_chart("1d")
     if not data.get("chart", {}).get("result"):
         logger.warning("获取今日数据失败，使用本地缓存")
         records_cache: list[Record] = load_history()
         if records_cache:
             last: Record = records_cache[-1]
-            return (f"使用缓存数据：{last[0]} 收盘 {last[1]:.2f}", last[3], last[0], last[1], last[2], last[4])
-        return ("无法获取数据", 0.0, "", 0.0, 0.0, 0.0)
+            open_ = last[5] if len(last) > 5 else last[1]
+            high_ = last[6] if len(last) > 6 else last[1]
+            low_ = last[7] if len(last) > 7 else last[1]
+            return (f"使用缓存数据：{last[0]} 收盘 {last[1]:.2f}", last[3], last[0], last[1], last[2], last[4], open_, high_, low_)
+        return ("无法获取数据", 0.0, "", 0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
     results: dict[str, Any] = data["chart"]["result"][0]
     meta: dict[str, Any] = results["meta"]
-    closes: list[float | None] = results["indicators"]["quote"][0]["close"]
+    quote: dict[str, Any] = results["indicators"]["quote"][0]
+    closes: list[float | None] = quote["close"]
 
     latest_close: float | None = meta.get("regularMarketPrice")
     if latest_close is None:
@@ -147,6 +165,16 @@ def get_today_data(multiplier: float = 1.0) -> tuple[str, float, str, float, flo
     if not prev_close:
         valid = [c for c in closes if c is not None]
         prev_close = valid[-2] if len(valid) >= 2 else latest_close
+
+    opens: list[float | None] = quote.get("open", [])
+    highs: list[float | None] = quote.get("high", [])
+    lows: list[float | None] = quote.get("low", [])
+    valid_o: list[float] = [o for o in opens if o is not None]
+    valid_h: list[float] = [h for h in highs if h is not None]
+    valid_l: list[float] = [l for l in lows if l is not None]
+    open_price: float = valid_o[-1] if valid_o else latest_close
+    high_price: float = valid_h[-1] if valid_h else latest_close
+    low_price: float = valid_l[-1] if valid_l else latest_close
 
     change: float = latest_close - prev_close
     pct: float = change / prev_close * 100
@@ -163,4 +191,4 @@ def get_today_data(multiplier: float = 1.0) -> tuple[str, float, str, float, flo
         f"较前一交易日{direction} {abs(change):.2f} 点，涨跌幅 {pct:+.2f}%。\n"
         f"数据日期 {data_date}，异常度 Z = {z_score:.2f}（{level}）"
     )
-    return msg, pct, data_date, latest_close, change, z_score
+    return msg, pct, data_date, latest_close, change, z_score, open_price, high_price, low_price
