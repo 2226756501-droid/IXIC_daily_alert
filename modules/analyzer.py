@@ -4,13 +4,14 @@ LOOKBACK: int = 20
 
 
 def calc_z_score(pcts: list[float]) -> float:
-    window: list[float] = pcts[:-1]
+    data: list[float] = pcts[-LOOKBACK:]
+    window: list[float] = data[:-1]
     if len(window) < 2:
         return 0.0
     mu: float = sum(window) / len(window)
     var: float = sum((x - mu) ** 2 for x in window) / (len(window) - 1)
     std: float = var ** 0.5
-    return 0.0 if std == 0 else (pcts[-1] - mu) / std
+    return 0.0 if std == 0 else (data[-1] - mu) / std
 
 
 def describe_z(z: float, multiplier: float = 1.0) -> str:
@@ -72,16 +73,6 @@ def record_abnormal(
     })
     memory["next_id"] += 1
     print(f">> 异常事件 #{memory['next_id'] - 1} 已记录")
-    return memory
-
-
-def finalize_abnormal(memory: dict[str, Any], end_date: str, total_drops: int) -> dict[str, Any]:
-    for evt in reversed(memory.get("events", [])):
-        if evt.get("lasted_days") is None:
-            evt["lasted_days"] = total_drops
-            evt["recovery_date"] = end_date
-            print(f">> 异常事件 #{evt['id']} 已完结（持续 {total_drops} 天）")
-            break
     return memory
 
 

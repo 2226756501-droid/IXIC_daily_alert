@@ -26,8 +26,13 @@ def safe_json(url: str) -> dict[str, Any]:
 
 def fetch_yahoo_chart(range_str: str = "1d") -> dict[str, Any]:
     url: str = f"https://query1.finance.yahoo.com/v8/finance/chart/%5EIXIC?range={range_str}&interval=1d"
-    resp: requests.Response = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=10)
-    return resp.json()
+    try:
+        resp: requests.Response = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=10)
+        resp.raise_for_status()
+        return resp.json()
+    except requests.RequestException as e:
+        print(f"!! Yahoo Finance API 请求失败：{e}")
+        return {}
 
 
 def load_history() -> list[Record]:
@@ -92,6 +97,9 @@ def init_history() -> None:
     if load_history():
         return
     data: dict[str, Any] = fetch_yahoo_chart("5y")
+    if not data.get("chart", {}).get("result"):
+        print("!! 获取历史数据失败，跳过初始化")
+        return
     results: dict[str, Any] = data["chart"]["result"][0]
     pcts: list[float] = []
     records: list[Record] = []
@@ -115,6 +123,13 @@ def get_today_data(multiplier: float = 1.0) -> tuple[str, float, str, float, flo
     from modules.analyzer import calc_z_score, describe_z
 
     data: dict[str, Any] = fetch_yahoo_chart("1d")
+    if not data.get("chart", {}).get("result"):
+        print("!! 获取今日数据失败，使用本地缓存")
+        records_cache: list[Record] = load_history()
+        if records_cache:
+            last: Record = records_cache[-1]
+            return (f"使用缓存数据：{last[0]} 收盘 {last[1]:.2f}", last[3], last[0], last[1], last[2], last[4])
+        return ("无法获取数据", 0.0, "", 0.0, 0.0, 0.0)
     results: dict[str, Any] = data["chart"]["result"][0]
     meta: dict[str, Any] = results["meta"]
     closes: list[float | None] = results["indicators"]["quote"][0]["close"]
@@ -137,8 +152,7 @@ def get_today_data(multiplier: float = 1.0) -> tuple[str, float, str, float, flo
 
     records: list[Record] = load_history()
     hist_pcts: list[float] = [r[3] for r in records]
-    window: list[float] = hist_pcts[-(20 - 1):] + [pct]
-    z_score: float = calc_z_score(window)
+    z_score: float = calc_z_score(hist_pcts + [pct])
     level: str = describe_z(z_score, multiplier)
 
     msg: str = (

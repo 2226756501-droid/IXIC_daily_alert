@@ -23,7 +23,7 @@ US_MARKET_HOLIDAYS_2027: list[date] = [
     date(2027, 5, 31),
     date(2027, 6, 18),
     date(2027, 7, 5),
-    date(2027, 9, 7),
+    date(2027, 9, 6),
     date(2027, 11, 25),
     date(2027, 12, 24),
     date(2027, 12, 31),

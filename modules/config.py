@@ -25,8 +25,4 @@ def get_email_config() -> dict[str, Any]:
     }
 
 
-def get_sensitivity() -> float:
-    try:
-        return float(get_env("SENSITIVITY_MULTIPLIER", "1.0"))
-    except ValueError:
-        return 1.0
+
