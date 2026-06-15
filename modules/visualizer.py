@@ -19,7 +19,7 @@ def plot_candlestick(df: pd.DataFrame, multiplier: float = 1.0) -> go.Figure:
             decreasing_line_color="#e74c3c",
         ))
         t: float = _threshold(multiplier)
-        ab_colors: list[str] = ["red" if abs(z) >= t else "transparent" for z in df["z_score"]]
+        ab_colors: list[str] = ["red" if abs(z) >= t else "rgba(0,0,0,0)" for z in df["z_score"]]
         fig.add_trace(go.Scatter(
             x=df["date"], y=df["close"],
             mode="markers", name="异常点",
