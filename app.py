@@ -43,6 +43,16 @@ CACHE_CONFIG: str = os.path.join(CACHE_DIR, "threshold_config.json")
 USING_CACHE: dict[str, bool] = {}
 
 
+@st.cache_data(ttl=3600, show_spinner="加载数据中…")
+def _cached_fetch_csv(url: str, cache_path: str) -> pd.DataFrame | None:
+    return fetch_csv_with_cache(url, cache_path)
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def _cached_fetch_json(url: str, cache_path: str) -> dict[str, Any]:
+    return fetch_json_with_cache(url, cache_path)
+
+
 def try_write_cache(content: str, path: str) -> None:
     try:
         os.makedirs(os.path.dirname(path), exist_ok=True)
@@ -98,14 +108,14 @@ def fetch_json_with_cache(url: str, cache_path: str) -> dict[str, Any]:
                 return json.load(f)
         return {}
 
-df: pd.DataFrame | None = fetch_csv_with_cache(HISTORY_URL, CACHE_HISTORY)
+df: pd.DataFrame | None = _cached_fetch_csv(HISTORY_URL, CACHE_HISTORY)
 if df is None:
     st.error("无法加载数据：GitHub 和本地缓存都不可用")
     st.stop()
 
-state: dict[str, Any] = fetch_json_with_cache(STATE_URL, CACHE_STATE)
-memory: dict[str, Any] = fetch_json_with_cache(MEMORY_URL, CACHE_MEMORY)
-config: dict[str, Any] = fetch_json_with_cache(CONFIG_URL, CACHE_CONFIG)
+state: dict[str, Any] = _cached_fetch_json(STATE_URL, CACHE_STATE)
+memory: dict[str, Any] = _cached_fetch_json(MEMORY_URL, CACHE_MEMORY)
+config: dict[str, Any] = _cached_fetch_json(CONFIG_URL, CACHE_CONFIG)
 multiplier: float = config.get("sensitivity_multiplier", 1.0)
 
 if USING_CACHE:

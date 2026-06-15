@@ -18,33 +18,43 @@ from modules.data_fetcher import (
     load_memory, save_memory, get_today_data, Record,
 )
 from modules.analyzer import record_abnormal, finalize_abnormal
-from modules.stats import build_memory_advice
+from modules.stats import build_memory_advice, calc_volatility_regime, calc_volume_ratio, adjust_z_by_regime
 from modules.news_fetcher import fetch_nasdaq_news
 from modules.config import get_email_config
 from modules.agent_engine import generate_email
+from modules.data_fetcher import save_feedback, load_feedback
 
 
 def main() -> None:
     init_history()
     config: dict[str, Any] = load_config()
     multiplier: float = config["sensitivity_multiplier"]
-    msg, pct, data_date, close, change, z_score, open_, high_, low_ = get_today_data(multiplier)
+    msg, pct, data_date, close, change, z_score, open_, high_, low_, volume = get_today_data(multiplier)
     logger.info(msg)
 
     records: list[Record] = load_history()
     if not records or records[-1][0] != data_date:
         fetch_time: str = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
-        records.append((data_date, close, change, pct, z_score, open_, high_, low_, fetch_time))
+        records.append((data_date, close, change, pct, z_score, open_, high_, low_, volume, fetch_time))
         save_history(records)
         logger.info("已记录 %s 数据", data_date)
 
     state: dict[str, Any] = load_market_state()
     is_down: bool = pct < 0
 
+    # Volatility regime & volume
+    hist_pcts: list[float] = [r[3] for r in records]
+    hist_volumes: list[float] = [r[8] for r in records if r[8] > 0]
+    regime: str = calc_volatility_regime(hist_pcts + [pct])
+    vol_ratio: float = calc_volume_ratio(volume, hist_volumes)
+    adjusted_z, regime_note = adjust_z_by_regime(z_score, regime)
+
     # Collect context for AI email generation
     ctx: dict[str, Any] = {
         "msg": msg, "date": data_date, "pct": pct,
         "close": close, "change": change, "z_score": z_score,
+        "adjusted_z": round(adjusted_z, 2), "regime": regime,
+        "regime_note": regime_note, "vol_ratio": round(vol_ratio, 2),
         "is_down": is_down, "state": state.get("state", "normal"),
         "drops": 0, "news": None, "drawdown": None,
         "recovery": False, "advice": None,
@@ -96,6 +106,8 @@ def main() -> None:
             ctx["advice"] = advice
 
     subject, body = build_email(ctx)
+    body += "\n\n────\n💬 这封邮件对你有帮助吗？回复 1=满意 2=不满意"
+    save_feedback(data_date, subject)
     send_email(subject, body)
     logger.info("邮件已发送")
 

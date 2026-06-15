@@ -45,7 +45,7 @@ def test_fetch_yahoo_chart_http_error(mock_get) -> None:
 def test_save_and_load_history(monkeypatch, tmp_path) -> None:
     temp_file = tmp_path / "history.csv"
     monkeypatch.setattr("modules.data_fetcher.HISTORY_FILE", str(temp_file))
-    records = [("2026-06-14", 15000.0, 100.0, 0.67, 0.5, 15010.0, 15100.0, 14900.0, "2026-06-14 12:00 UTC")]
+    records = [("2026-06-14", 15000.0, 100.0, 0.67, 0.5, 15010.0, 15100.0, 14900.0, 123456789.0, "2026-06-14 12:00 UTC")]
     save_history(records)
     loaded = load_history()
     assert len(loaded) == 1

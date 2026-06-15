@@ -197,6 +197,11 @@ def _build_email_prompt(ctx: dict[str, Any]) -> str:
         f"【市场状态】{'异常' if ctx.get('state') == 'abnormal' else '正常'}",
         f"连跌天数: {ctx.get('drops', 0)}",
     ]
+    if ctx.get("regime"):
+        lines.append(f"波动率环境: {ctx['regime']} {ctx.get('regime_note', '')}")
+    if ctx.get("vol_ratio") and ctx["vol_ratio"] > 0:
+        vol_note: str = "（显著放量）" if ctx["vol_ratio"] > 1.5 else "（缩量）" if ctx["vol_ratio"] < 0.5 else ""
+        lines.append(f"量能比: {ctx['vol_ratio']} {vol_note}")
     if ctx.get("drawdown"):
         dd: dict[str, Any] = ctx["drawdown"]
         lines.append(f"近3月最大回撤: {dd['max_drawdown_pct']}% ({dd['date']})")
@@ -210,6 +215,23 @@ def _build_email_prompt(ctx: dict[str, Any]) -> str:
     if ctx.get("advice"):
         lines.append("")
         lines.append(f"【历史参考】{ctx['advice']}")
+
+    # Recent feedback summary
+    try:
+        from modules.data_fetcher import load_feedback
+        fb: list[dict[str, str]] = load_feedback()
+        if fb:
+            recent_fb: list[dict[str, str]] = fb[-5:]
+            satisfied: int = sum(1 for f in recent_fb if f.get("rating") == "1")
+            dissatisfied: int = sum(1 for f in recent_fb if f.get("rating") == "2")
+            total_fb: int = satisfied + dissatisfied
+            if total_fb >= 3:
+                lines.append("")
+                lines.append(f"【近期用户反馈】最近{total_fb}次反馈中，满意{satisfied}次，不满意{dissatisfied}次")
+                if dissatisfied > satisfied:
+                    lines.append("提示：用户对近期邮件风格不满意，请调整为更简洁、数据更突出的风格。")
+    except Exception:
+        pass
 
     lines.extend([
         "",
