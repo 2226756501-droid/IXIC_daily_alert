@@ -33,11 +33,22 @@ def main() -> None:
     logger.info(msg)
 
     records: list[Record] = load_history()
-    if not records or records[-1][0] != data_date:
-        fetch_time: str = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
-        records.append((data_date, close, change, pct, z_score, open_, high_, low_, volume, fetch_time))
-        save_history(records)
+    fetch_time: str = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+    new_record: Record = (data_date, close, change, pct, z_score, open_, high_, low_, volume, fetch_time)
+
+    updated: bool = False
+    for i, rec in enumerate(records):
+        if rec[0] == data_date:
+            records[i] = new_record
+            updated = True
+            logger.info("已更新 %s 数据", data_date)
+            break
+
+    if not updated:
+        records.append(new_record)
         logger.info("已记录 %s 数据", data_date)
+
+    save_history(records)
 
     state: dict[str, Any] = load_market_state()
     is_down: bool = pct < 0
