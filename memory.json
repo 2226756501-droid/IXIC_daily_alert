@@ -1,0 +1,15 @@
+{
+  "events": [
+    {
+      "id": 1,
+      "date": "2026-06-26",
+      "trigger_z": -0.09,
+      "consecutive_drops": 5,
+      "close": 25297.62,
+      "change_pct": -0.24,
+      "lasted_days": null,
+      "recovery_date": null
+    }
+  ],
+  "next_id": 2
+}

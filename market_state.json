@@ -1,4 +1,10 @@
 {
   "sensitivity_multiplier": 2.0,
-  "consecutive_drops": 1
+  "max_drawdown_3m": {
+    "max_drawdown_pct": -6.4,
+    "date": "2026-06-25"
+  },
+  "state": "abnormal",
+  "abnormal_since": "2026-06-26",
+  "consecutive_drops": 5
 }
