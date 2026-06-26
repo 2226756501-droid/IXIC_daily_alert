@@ -48,10 +48,35 @@ def main() -> None:
         records.append(new_record)
         logger.info("已记录 %s 数据", data_date)
 
-    save_history(records)
-
     state: dict[str, Any] = load_market_state()
     is_down: bool = pct < 0
+    was_abnormal: bool = state.get("state") == "abnormal"
+
+    if is_down:
+        state["consecutive_drops"] = state.get("consecutive_drops", 0) + 1
+
+        if state["consecutive_drops"] == 3 and not was_abnormal:
+            state["state"] = "abnormal"
+            state["abnormal_since"] = data_date
+
+        elif state["consecutive_drops"] >= 4:
+            from modules.drawdown import calc_max_drawdown_3m
+            dd: dict[str, Any] | None = calc_max_drawdown_3m()
+            if dd:
+                state["max_drawdown_3m"] = dd
+
+    else:
+        if was_abnormal:
+            state["state"] = "normal"
+            state["abnormal_since"] = None
+            state["max_drawdown_3m"] = None
+        state["consecutive_drops"] = 0
+
+    save_market_state(state)
+    logger.info("市场状态已保存: consecutive_drops=%s, state=%s",
+                 state.get("consecutive_drops"), state.get("state"))
+
+    save_history(records)
 
     # Volatility regime & volume
     hist_pcts: list[float] = [r[3] for r in records]
@@ -60,6 +85,8 @@ def main() -> None:
     vol_ratio: float = calc_volume_ratio(volume, hist_volumes)
     adjusted_z, regime_note = adjust_z_by_regime(z_score, regime)
 
+    drops: int = state.get("consecutive_drops", 0)
+
     # Collect context for AI email generation
     ctx: dict[str, Any] = {
         "msg": msg, "date": data_date, "pct": pct,
@@ -67,49 +94,23 @@ def main() -> None:
         "adjusted_z": round(adjusted_z, 2), "regime": regime,
         "regime_note": regime_note, "vol_ratio": round(vol_ratio, 2),
         "is_down": is_down, "state": state.get("state", "normal"),
-        "drops": 0, "news": None, "drawdown": None,
+        "drops": drops, "news": None, "drawdown": None,
         "recovery": False, "advice": None,
     }
 
-    if is_down:
-        state["consecutive_drops"] = state.get("consecutive_drops", 0) + 1
-        drops: int = state["consecutive_drops"]
-        ctx["drops"] = drops
+    if is_down and drops == 3:
+        mem: dict[str, Any] = load_memory()
+        mem = record_abnormal(mem, z_score, drops, close, pct, data_date)
+        save_memory(mem)
+        news_list: list[str] = fetch_nasdaq_news()
+        ctx["news"] = news_list if news_list else None
 
-        if drops == 3 and state.get("state") == "normal":
-            state["state"] = "abnormal"
-            state["abnormal_since"] = data_date
-            mem: dict[str, Any] = load_memory()
-            mem = record_abnormal(mem, z_score, drops, close, pct, data_date)
-            save_memory(mem)
-            news_list: list[str] = fetch_nasdaq_news()
-            ctx["news"] = news_list if news_list else None
+    if state.get("max_drawdown_3m"):
+        ctx["drawdown"] = state["max_drawdown_3m"]
 
-        elif drops >= 4:
-            from modules.drawdown import calc_max_drawdown_3m
-            dd: dict[str, Any] | None = calc_max_drawdown_3m()
-            if dd:
-                state["max_drawdown_3m"] = dd
-                ctx["drawdown"] = dd
+    if not is_down and was_abnormal:
+        ctx["recovery"] = True
 
-    else:
-        if state.get("state") == "abnormal":
-            drops = state.get("consecutive_drops", 0)
-            ctx["drops"] = drops
-            ctx["recovery"] = True
-            state["state"] = "normal"
-            state["abnormal_since"] = None
-            state["consecutive_drops"] = 0
-            state["max_drawdown_3m"] = None
-            mem = load_memory()
-            mem = finalize_abnormal(mem, data_date, drops)
-            save_memory(mem)
-        else:
-            state["consecutive_drops"] = 0
-
-    save_market_state(state)
-
-    drops = state.get("consecutive_drops", 0)
     if is_down and drops >= 2 and z_score <= -1.5:
         mem = load_memory()
         advice: str = build_memory_advice(mem.get("events", []), z_score, drops)
