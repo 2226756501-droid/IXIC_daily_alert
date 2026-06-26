@@ -25,6 +25,16 @@ from modules.agent_engine import generate_email
 from modules.data_fetcher import save_feedback, load_feedback
 
 
+def calc_consecutive_drops(records: list[Record]) -> int:
+    count: int = 0
+    for rec in reversed(records):
+        if rec[3] < 0:
+            count += 1
+        else:
+            break
+    return count
+
+
 def main() -> None:
     init_history()
     config: dict[str, Any] = load_config()
@@ -48,33 +58,34 @@ def main() -> None:
         records.append(new_record)
         logger.info("已记录 %s 数据", data_date)
 
-    state: dict[str, Any] = load_market_state()
+    drops: int = calc_consecutive_drops(records)
     is_down: bool = pct < 0
+    state: dict[str, Any] = load_market_state()
     was_abnormal: bool = state.get("state") == "abnormal"
 
-    if is_down:
-        state["consecutive_drops"] = state.get("consecutive_drops", 0) + 1
+    if drops >= 4:
+        from modules.drawdown import calc_max_drawdown_3m
+        dd: dict[str, Any] | None = calc_max_drawdown_3m()
+        if dd:
+            state["max_drawdown_3m"] = dd
 
-        if state["consecutive_drops"] == 3 and not was_abnormal:
-            state["state"] = "abnormal"
-            state["abnormal_since"] = data_date
+    abnormal_news: list[str] | None = None
+    if is_down and drops >= 3 and not was_abnormal:
+        state["state"] = "abnormal"
+        state["abnormal_since"] = data_date
+        mem: dict[str, Any] = load_memory()
+        mem = record_abnormal(mem, z_score, drops, close, pct, data_date)
+        save_memory(mem)
+        abnormal_news = fetch_nasdaq_news()
+    elif not is_down and was_abnormal:
+        state["state"] = "normal"
+        state["abnormal_since"] = None
+        state["max_drawdown_3m"] = None
 
-        elif state["consecutive_drops"] >= 4:
-            from modules.drawdown import calc_max_drawdown_3m
-            dd: dict[str, Any] | None = calc_max_drawdown_3m()
-            if dd:
-                state["max_drawdown_3m"] = dd
-
-    else:
-        if was_abnormal:
-            state["state"] = "normal"
-            state["abnormal_since"] = None
-            state["max_drawdown_3m"] = None
-        state["consecutive_drops"] = 0
+    state["consecutive_drops"] = drops
 
     save_market_state(state)
-    logger.info("市场状态已保存: consecutive_drops=%s, state=%s",
-                 state.get("consecutive_drops"), state.get("state"))
+    logger.info("市场状态已保存: consecutive_drops=%s, state=%s", drops, state.get("state"))
 
     save_history(records)
 
@@ -85,31 +96,19 @@ def main() -> None:
     vol_ratio: float = calc_volume_ratio(volume, hist_volumes)
     adjusted_z, regime_note = adjust_z_by_regime(z_score, regime)
 
-    drops: int = state.get("consecutive_drops", 0)
-
     # Collect context for AI email generation
+    abnormal_state: str = state.get("state", "normal")
     ctx: dict[str, Any] = {
         "msg": msg, "date": data_date, "pct": pct,
         "close": close, "change": change, "z_score": z_score,
         "adjusted_z": round(adjusted_z, 2), "regime": regime,
         "regime_note": regime_note, "vol_ratio": round(vol_ratio, 2),
-        "is_down": is_down, "state": state.get("state", "normal"),
-        "drops": drops, "news": None, "drawdown": None,
-        "recovery": False, "advice": None,
+        "is_down": is_down, "state": abnormal_state,
+        "drops": drops, "news": abnormal_news,
+        "drawdown": state.get("max_drawdown_3m"),
+        "recovery": not is_down and was_abnormal,
+        "advice": None,
     }
-
-    if is_down and drops == 3:
-        mem: dict[str, Any] = load_memory()
-        mem = record_abnormal(mem, z_score, drops, close, pct, data_date)
-        save_memory(mem)
-        news_list: list[str] = fetch_nasdaq_news()
-        ctx["news"] = news_list if news_list else None
-
-    if state.get("max_drawdown_3m"):
-        ctx["drawdown"] = state["max_drawdown_3m"]
-
-    if not is_down and was_abnormal:
-        ctx["recovery"] = True
 
     if is_down and drops >= 2 and z_score <= -1.5:
         mem = load_memory()
