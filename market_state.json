@@ -1,6 +1,6 @@
 {
-  "state": "normal",
-  "consecutive_drops": 0,
-  "abnormal_since": null,
+  "state": "abnormal",
+  "consecutive_drops": 5,
+  "abnormal_since": "2026-06-22",
   "max_drawdown_3m": null
 }
