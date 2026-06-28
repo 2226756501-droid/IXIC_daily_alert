@@ -5,7 +5,7 @@ import requests
 from modules.yahoo_client import fetch_chart
 from modules.storage import (
     load_history, save_history,
-    load_config, load_market_state, save_market_state,
+    load_config, save_config, load_market_state, save_market_state,
     load_memory, save_memory,
 )
 from modules.types import Record
@@ -63,9 +63,9 @@ def test_load_config_default(monkeypatch) -> None:
 def test_save_and_load_config(monkeypatch, tmp_path) -> None:
     temp_file = tmp_path / "config.json"
     monkeypatch.setattr("modules.storage.CONFIG_FILE", str(temp_file))
-    save_market_state({"sensitivity_multiplier": 2.0})
-    loaded = load_market_state()
-    assert loaded["sensitivity_multiplier"] == 2.0
+    save_config({"sensitivity_multiplier": 2.5})
+    loaded = load_config()
+    assert loaded["sensitivity_multiplier"] == 2.5
 
 
 def test_save_and_load_market_state(monkeypatch, tmp_path) -> None:

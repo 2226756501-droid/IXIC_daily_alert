@@ -1,22 +1,16 @@
-import json
 import os
 import re
+import sys
 from typing import Any
 
-CONFIG_FILE: str = "threshold_config.json"
+sys.path.insert(0, os.path.dirname(__file__))
+from modules.storage import load_config, save_config
 
 INCREASE_KEYWORDS: list[str] = ["提高", "调高", "调大", "增加", "加大", "升"]
 DECREASE_KEYWORDS: list[str] = ["降低", "调低", "调小", "减少", "减小", "降"]
 DELTA_MIN: float = 0.1
 DELTA_MAX: float = 1.0
 DELTA_DEFAULT: float = 0.5
-
-
-def load_config() -> dict[str, Any]:
-    if not os.path.exists(CONFIG_FILE):
-        return {"sensitivity_multiplier": 1.0}
-    with open(CONFIG_FILE) as f:
-        return json.load(f)
 
 
 def _extract_delta(text: str) -> float | None:
@@ -59,8 +53,7 @@ if __name__ == "__main__":
         max(0.5, min(3.0, current + adjustment)), 1
     )
 
-    with open(CONFIG_FILE, "w") as f:
-        json.dump(config, f, indent=2)
+    save_config(config)
 
     new_val: float = config["sensitivity_multiplier"]
     gh_out: str | None = os.environ.get("GITHUB_OUTPUT")

@@ -47,6 +47,9 @@ def send_email(subject: str, body: str) -> None:
     msg["Subject"] = subject
     msg["From"] = cfg["user"]
     msg["To"] = cfg["notify"]
-    with smtplib.SMTP_SSL(cfg["server"], cfg["port"]) as server:
-        server.login(cfg["user"], cfg["password"])
-        server.send_message(msg)
+    try:
+        with smtplib.SMTP_SSL(cfg["server"], cfg["port"]) as server:
+            server.login(cfg["user"], cfg["password"])
+            server.send_message(msg)
+    except Exception as e:
+        logger.warning("邮件发送失败: %s", e)

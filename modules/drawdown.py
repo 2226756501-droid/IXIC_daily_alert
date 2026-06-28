@@ -18,7 +18,10 @@ def calc_max_drawdown_3m() -> dict[str, Any] | None:
         try:
             dt: datetime = datetime.strptime(r.date, "%Y-%m-%d").replace(tzinfo=timezone.utc)
         except ValueError:
-            continue
+            try:
+                dt: datetime = datetime.strptime(r.date, "%m/%d/%Y").replace(tzinfo=timezone.utc)
+            except ValueError:
+                continue
         if dt >= cutoff:
             closes.append((dt, r.close))
 

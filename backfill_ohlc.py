@@ -58,7 +58,10 @@ def main() -> None:
     months: set[tuple[int, int]] = set()
     for i in need_fill:
         date_str: str = rows[i]["date"]
-        dt: datetime = datetime.strptime(date_str, "%Y-%m-%d")
+        try:
+            dt: datetime = datetime.strptime(date_str, "%Y-%m-%d")
+        except ValueError:
+            dt: datetime = datetime.strptime(date_str, "%m/%d/%Y")
         months.add((dt.year, dt.month))
 
     date_map: dict[str, dict[str, float]] = {}

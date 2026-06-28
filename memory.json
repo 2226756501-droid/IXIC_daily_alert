@@ -3,17 +3,10 @@
     {
       "id": 1,
       "date": "2026-06-26",
-<<<<<<< HEAD
       "trigger_z": -0.09,
       "consecutive_drops": 5,
       "close": 25297.62,
       "change_pct": -0.24,
-=======
-      "trigger_z": -0.23,
-      "consecutive_drops": 5,
-      "close": 25358.6,
-      "change_pct": -0.46,
->>>>>>> bee73e1 (refactor: 大规模代码重构与质量改进)
       "lasted_days": null,
       "recovery_date": null
     }

@@ -7,10 +7,6 @@ def _thresholds(multiplier: float = 1.0) -> tuple[float, float, float]:
     return (1 * multiplier, 2 * multiplier, 3 * multiplier)
 
 
-def _threshold(multiplier: float = 1.0) -> float:
-    return 2 * multiplier
-
-
 def plot_candlestick(df: pd.DataFrame, multiplier: float = 1.0) -> go.Figure:
     has_ohlc = all(c in df.columns for c in ["open", "high", "low"])
     fig: go.Figure = go.Figure()
@@ -22,7 +18,7 @@ def plot_candlestick(df: pd.DataFrame, multiplier: float = 1.0) -> go.Figure:
             increasing_line_color="#2ecc71",
             decreasing_line_color="#e74c3c",
         ))
-        t2: float = _threshold(multiplier)
+        _, t2, _ = _thresholds(multiplier)
         ab_colors: list[str] = ["red" if abs(z) >= t2 else "rgba(0,0,0,0)" for z in df["z_score"]]
         fig.add_trace(go.Scatter(
             x=df["date"], y=df["close"],
@@ -44,7 +40,7 @@ def plot_candlestick(df: pd.DataFrame, multiplier: float = 1.0) -> go.Figure:
 
 
 def plot_price_history(df: pd.DataFrame, multiplier: float = 1.0) -> go.Figure:
-    t: float = _threshold(multiplier)
+    _, t, _ = _thresholds(multiplier)
     fig: go.Figure = go.Figure()
     fig.add_trace(go.Scatter(
         x=df["date"], y=df["close"],

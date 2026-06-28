@@ -2,6 +2,7 @@ import csv
 import json
 import logging
 import os
+import tempfile
 from datetime import datetime, timezone
 from typing import Any
 
@@ -15,6 +16,22 @@ CONFIG_FILE: str = os.path.join(BASE_DIR, "threshold_config.json")
 STATE_FILE: str = os.path.join(BASE_DIR, "market_state.json")
 MEMORY_FILE: str = os.path.join(BASE_DIR, "memory.json")
 FEEDBACK_FILE: str = os.path.join(BASE_DIR, "feedback.csv")
+
+
+def _atomic_write(path: str, data: str) -> None:
+    dirpath: str = os.path.dirname(path) or "."
+    fd, tmp = tempfile.mkstemp(dir=dirpath, suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(data)
+        os.replace(tmp, path)
+        logger.debug("原子写入成功: %s", path)
+    except Exception:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
 
 
 def load_history() -> list[Record]:
@@ -40,12 +57,14 @@ def load_history() -> list[Record]:
 
 
 def save_history(records: list[Record]) -> None:
-    with open(HISTORY_FILE, "w", newline="", encoding="utf-8") as f:
-        w = csv.writer(f)
-        w.writerow(["date", "close", "change", "pct", "z_score", "open", "high", "low", "volume", "fetch_time"])
-        for r in records:
-            w.writerow([r.date, f"{r.close:.2f}", f"{r.change:.2f}", f"{r.pct:.2f}", f"{r.z_score:.2f}",
-                       f"{r.open:.2f}", f"{r.high:.2f}", f"{r.low:.2f}", f"{r.volume:.0f}", r.fetch_time])
+    import io
+    buf = io.StringIO()
+    w = csv.writer(buf)
+    w.writerow(["date", "close", "change", "pct", "z_score", "open", "high", "low", "volume", "fetch_time"])
+    for r in records:
+        w.writerow([r.date, f"{r.close:.2f}", f"{r.change:.2f}", f"{r.pct:.2f}", f"{r.z_score:.2f}",
+                   f"{r.open:.2f}", f"{r.high:.2f}", f"{r.low:.2f}", f"{r.volume:.0f}", r.fetch_time])
+    _atomic_write(HISTORY_FILE, buf.getvalue())
 
 
 def load_config() -> ThresholdConfig:
@@ -53,6 +72,10 @@ def load_config() -> ThresholdConfig:
         return {"sensitivity_multiplier": 1.0}
     with open(CONFIG_FILE) as f:
         return json.load(f)
+
+
+def save_config(config: ThresholdConfig) -> None:
+    _atomic_write(CONFIG_FILE, json.dumps(config, indent=2))
 
 
 def load_market_state() -> MarketState:
@@ -63,8 +86,7 @@ def load_market_state() -> MarketState:
 
 
 def save_market_state(state: MarketState) -> None:
-    with open(STATE_FILE, "w") as f:
-        json.dump(state, f, indent=2)
+    _atomic_write(STATE_FILE, json.dumps(state, indent=2))
 
 
 def save_feedback(date: str, subject: str, rating: str = "") -> None:
@@ -98,5 +120,4 @@ def load_memory() -> Memory:
 
 
 def save_memory(mem: Memory) -> None:
-    with open(MEMORY_FILE, "w") as f:
-        json.dump(mem, f, indent=2)
+    _atomic_write(MEMORY_FILE, json.dumps(mem, indent=2))

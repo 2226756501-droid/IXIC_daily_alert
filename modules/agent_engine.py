@@ -52,7 +52,7 @@ def _build_agent() -> tuple[Any, Any]:
 
         config = load_config()
         multiplier = config.get("sensitivity_multiplier", 1.0)
-        msg, _pct, _date, _close, _change, _z = _get(multiplier)
+        msg, _pct, _date, _close, _change, _z, _open, _high, _low, _volume = _get(multiplier)
         return msg
 
     @function_tool
