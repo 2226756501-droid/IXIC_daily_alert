@@ -16,6 +16,7 @@ logger: logging.Logger = logging.getLogger(__name__)
 import requests
 import streamlit as st
 import pandas as pd
+import plotly.graph_objects as go
 
 from modules.yahoo_client import safe_json
 from modules.stats import describe_z
@@ -27,8 +28,11 @@ from modules.visualizer import (
     plot_drawdown_analysis,
     plot_statistics,
 )
+from modules.storage import load_history, load_feedback
+from modules.types import Record
 from modules.holidays import is_market_open, next_holiday, next_market_day
 from modules import agent_engine
+from modules.backtester import run_backtest, get_optimal_multiplier
 
 GITHUB_RAW: str = "https://raw.githubusercontent.com/2226756501-droid/IXIC_daily_alert/main"
 HISTORY_URL: str = f"{GITHUB_RAW}/history.csv"
@@ -192,8 +196,8 @@ def _save_local_feedback(rating: str) -> None:
         logger.warning("保存反馈失败: %s", e)
 
 
-tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
-    "📈 行情走势", "📊 统计分析", "📉 回撤分析", "📰 新闻", "⚙️ 异常事件", "🤖 AI 分析", "💬 反馈"
+tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8 = st.tabs([
+    "📈 行情走势", "📊 统计分析", "📉 回撤分析", "📰 新闻", "⚙️ 异常事件", "🤖 AI 分析", "💬 反馈", "🎯 回测对比"
 ])
 
 with tab1:
@@ -330,3 +334,93 @@ with tab7:
         st.rerun()
 
     st.caption("💡 也可直接回复邮件：数字 **1** = 满意，**2** = 不满意")
+
+with tab8:
+    st.subheader("🎯 敏感度回测对比")
+    st.caption("评估不同 sensitivity_multiplier 的历史预警表现（过去 20 天的 Z-score 窗口，预测未来 10 个交易日）")
+
+    records_list: list[Record] = load_history()
+    if len(records_list) < 30:
+        st.warning("历史数据不足 30 条，无法回测")
+    else:
+        pcts_list: list[float] = [r.pct for r in records_list]
+        results, events_detail = run_backtest(records_list)
+        if not results:
+            st.warning("回测数据不足")
+        else:
+            best = get_optimal_multiplier(results)
+            if best:
+                st.success(f"🏆 最优倍率：**{best['multiplier']}**（F1={best['f1_score']:.3f}，精确率={best['precision']:.1%}，召回率={best['recall']:.1%}）")
+
+            res_df: pd.DataFrame = pd.DataFrame(results)
+            res_df_display = res_df.rename(columns={
+                "multiplier": "倍率",
+                "threshold_2sigma": "2σ 阈值",
+                "total_alerts": "总预警",
+                "correct_alerts": "有效预警",
+                "precision": "精确率",
+                "recall": "召回率",
+                "f1_score": "F1",
+                "true_positive": "TP",
+                "false_positive": "FP",
+                "true_negative": "TN",
+                "false_negative": "FN",
+                "alert_rate": "预警率(%)",
+            })
+            col_fmt: dict[str, str] = {
+                "精确率": "{:.1%}", "召回率": "{:.1%}", "F1": "{:.3f}",
+                "预警率(%)": "{:.1f}",
+            }
+            st.dataframe(
+                res_df_display.style.format(col_fmt, subset=list(col_fmt.keys())),
+                use_container_width=True, hide_index=True,
+            )
+
+            st.divider()
+
+            fig_bt = go.Figure()
+            fig_bt.add_trace(go.Scatter(
+                x=res_df["multiplier"], y=res_df["f1_score"],
+                mode="lines+markers", name="F1 分数",
+                line=dict(color="#2ecc71", width=3),
+                marker=dict(size=10),
+            ))
+            fig_bt.add_trace(go.Scatter(
+                x=res_df["multiplier"], y=res_df["precision"],
+                mode="lines+markers", name="精确率",
+                line=dict(color="#3498db", width=2, dash="dash"),
+            ))
+            fig_bt.add_trace(go.Scatter(
+                x=res_df["multiplier"], y=res_df["recall"],
+                mode="lines+markers", name="召回率",
+                line=dict(color="#e74c3c", width=2, dash="dot"),
+            ))
+            fig_bt.add_trace(go.Bar(
+                x=res_df["multiplier"], y=res_df["total_alerts"],
+                name="总预警数", yaxis="y2", opacity=0.3,
+                marker_color="#95a5a6",
+            ))
+            fig_bt.update_layout(
+                title="敏感度倍率 vs 预警表现",
+                template="plotly_white", height=400,
+                hovermode="x unified",
+                yaxis=dict(title="分数", range=[0, 1.05]),
+                yaxis2=dict(title="预警数", overlaying="y", side="right"),
+                legend=dict(orientation="h", yanchor="bottom", y=1.02),
+            )
+            st.plotly_chart(fig_bt, use_container_width=True)
+
+            st.divider()
+            st.subheader("📋 历史预警事件详情（倍率 = 1.0）")
+            _current_mult: float = config.get("sensitivity_multiplier", 1.0)
+            cur_filtered: list[dict[str, Any]] = [e for e in events_detail if abs(e["z_score"]) >= 2.0 * _current_mult]
+
+            if cur_filtered:
+                detail_df: pd.DataFrame = pd.DataFrame(cur_filtered[-50:])
+                detail_df = detail_df.sort_values("date", ascending=False)
+                detail_df["is_correct"] = detail_df["is_correct"].map({True: "✅ 有效", False: "❌ 误报"})
+                st.dataframe(detail_df, use_container_width=True, hide_index=True)
+            else:
+                st.info("当前倍率下无预警事件")
+
+            st.caption(f"共 {len(events_detail)} 条历史预警（倍率=1.0），当前倍率 {_current_mult} 触发 {len(cur_filtered)} 条")

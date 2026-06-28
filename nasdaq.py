@@ -24,6 +24,7 @@ from modules.stats import (
 )
 from modules.news_fetcher import fetch_nasdaq_news
 from modules.mailer import build_email, send_email
+from modules.webhook import send_webhook
 from modules.types import Record, MarketState, EmailContext
 
 ABNORMAL_DRAWDOWN_DROPS: int = 4
@@ -128,6 +129,7 @@ def main() -> None:
     body += "\n\n────\n💬 这封邮件对你有帮助吗？回复 1=满意 2=不满意"
     save_feedback(data_date, subject)
     send_email(subject, body)
+    send_webhook(subject, body)
     logger.info("邮件已发送")
 
 
