@@ -176,7 +176,9 @@ else:
         days_until: int = (h_date - today).days
         st.caption(f"📅 下一个休市日：{h_date}（{h_name}），还有 {days_until} 天")
 
-    def _save_local_feedback(rating: str, fb_display: pd.DataFrame | None = None) -> None:
+
+
+def _save_local_feedback(rating: str) -> None:
     try:
         from modules.storage import save_feedback
         save_feedback(str(date.today()), "Streamlit UI 反馈", rating)
