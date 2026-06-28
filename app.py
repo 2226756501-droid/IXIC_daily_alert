@@ -45,13 +45,6 @@ CACHE_CONFIG: str = os.path.join(CACHE_DIR, "threshold_config.json")
 USING_CACHE: dict[str, bool] = {}
 
 
-def _get_secret(key: str, default: str = "") -> str:
-    try:
-        return st.secrets.get(key, os.environ.get(key, default))
-    except Exception:
-        return os.environ.get(key, default)
-
-
 @st.cache_data(ttl=3600, show_spinner="加载数据中…")
 def _cached_fetch_csv(url: str, cache_path: str) -> pd.DataFrame | None:
     return fetch_csv_with_cache(url, cache_path)

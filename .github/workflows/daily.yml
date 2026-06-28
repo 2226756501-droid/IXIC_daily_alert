@@ -27,6 +27,10 @@ jobs:
           EMAIL_USER: ${{ secrets.EMAIL_USER }}
           EMAIL_PASS: ${{ secrets.EMAIL_PASS }}
           NOTIFY_EMAIL: ${{ secrets.NOTIFY_EMAIL }}
+      - run: python check_feedback.py
+        env:
+          EMAIL_USER: ${{ secrets.EMAIL_USER }}
+          EMAIL_PASS: ${{ secrets.EMAIL_PASS }}
       - run: |
           git config user.name "NASDAQ Bot"
           git config user.email "nasdaq-bot@users.noreply.github.com"

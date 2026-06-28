@@ -1,10 +1,11 @@
+import csv
 import email
 import logging
+import os
 import re
 from datetime import datetime, timezone, timedelta
 from typing import Any
 
-from modules.storage import load_feedback, save_feedback
 from modules.config import get_env
 
 logger: logging.Logger = logging.getLogger(__name__)
@@ -13,6 +14,13 @@ IMAP_SERVER: str = "imap.qq.com"
 IMAP_PORT: int = 993
 SEARCH_KEYWORDS: list[str] = ["纳斯达克", "NASDAQ", "nasdaq"]
 LOOKBACK_HOURS: int = 48
+FEEDBACK_FILE: str = os.path.join(os.path.dirname(os.path.dirname(__file__)), "feedback.csv")
+QUOTE_MARKERS: list[str] = [
+    "-----原始邮件-----",
+    "-----Original-----",
+    "------------------ Original ------------------",
+    "回复：",
+]
 
 
 def _decode_str(s: str | None) -> str:
@@ -31,7 +39,7 @@ def _decode_str(s: str | None) -> str:
         return str(s)
 
 
-def _parse_body(msg: Any) -> str:
+def _get_reply_body(msg: Any) -> str:
     body: str = ""
     if msg.is_multipart():
         for part in msg.walk():
@@ -52,23 +60,39 @@ def _parse_body(msg: Any) -> str:
                 body = payload.decode(charset, errors="replace")
         except Exception:
             pass
-    return body
+
+    for marker in QUOTE_MARKERS:
+        idx: int = body.find(marker)
+        if idx != -1:
+            body = body[:idx]
+            break
+    return body.strip()
 
 
 def _extract_rating(body: str) -> str:
-    body_clean: str = body.strip()
-    lines: list[str] = body_clean.splitlines()
-    for line in lines:
-        line = line.strip()
-        if re.match(r"^1\s*$", line):
-            return "1"
-        if re.match(r"^2\s*$", line):
-            return "2"
-        if re.match(r"^满意\s*$", line):
-            return "1"
-        if re.match(r"^不满意\s*$", line):
-            return "2"
+    if not body:
+        return ""
+    first_line: str = body.splitlines()[0].strip()
+    if first_line == "1":
+        return "1"
+    if first_line == "2":
+        return "2"
+    if first_line == "满意":
+        return "1"
+    if first_line == "不满意":
+        return "2"
     return ""
+
+
+def _rewrite_feedback(rows: list[dict[str, str]]) -> None:
+    fieldnames: list[str] = ["date", "subject", "rating", "created_at"]
+    try:
+        with open(FEEDBACK_FILE, "w", newline="", encoding="utf-8") as f:
+            w = csv.DictWriter(f, fieldnames=fieldnames)
+            w.writeheader()
+            w.writerows(rows)
+    except OSError as e:
+        logger.warning("写入反馈文件失败: %s", e)
 
 
 def check_feedback() -> int:
@@ -81,7 +105,10 @@ def check_feedback() -> int:
     import imaplib
 
     updated: int = 0
-    existing: list[dict[str, str]] = load_feedback()
+    existing: list[dict[str, str]] = []
+    if os.path.exists(FEEDBACK_FILE):
+        with open(FEEDBACK_FILE, "r", encoding="utf-8") as f:
+            existing = list(csv.DictReader(f))
 
     try:
         mail = imaplib.IMAP4_SSL(IMAP_SERVER, IMAP_PORT)
@@ -112,8 +139,8 @@ def check_feedback() -> int:
             if not is_reply or not is_nasdaq:
                 continue
 
-            body: str = _parse_body(msg)
-            rating: str = _extract_rating(body)
+            reply_body: str = _get_reply_body(msg)
+            rating: str = _extract_rating(reply_body)
             if not rating:
                 continue
 
@@ -128,11 +155,13 @@ def check_feedback() -> int:
                     updated += 1
                     break
             if not matched:
-                save_feedback(
-                    datetime.now(timezone.utc).strftime("%Y-%m-%d"),
-                    reply_subject,
-                    rating,
-                )
+                now_utc: str = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+                existing.append({
+                    "date": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
+                    "subject": reply_subject,
+                    "rating": rating,
+                    "created_at": now_utc,
+                })
                 updated += 1
 
         mail.logout()
@@ -141,6 +170,7 @@ def check_feedback() -> int:
         return 0
 
     if updated:
+        _rewrite_feedback(existing)
         logger.info("已更新 %d 条反馈评分", updated)
     else:
         logger.info("未发现新的反馈回复")
