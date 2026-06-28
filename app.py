@@ -159,7 +159,7 @@ latest: pd.Series = df.iloc[-1]
 z: float = latest["z_score"]
 level: str = describe_z(z, multiplier)
 
-col1, col2, col3, col4 = st.columns(4)
+col1, col2, col3, col4, col5 = st.columns(5)
 with col1:
     st.metric("当前指数", f"{latest['close']:.2f}", f"{latest['change']:+.2f}")
 with col2:
@@ -169,6 +169,14 @@ with col3:
 with col4:
     drops: int = state.get("consecutive_drops", 0)
     st.metric("连续下跌", f"{drops}天", state.get("state", "normal"))
+with col5:
+    _uptime_pct: float = 100.0
+    try:
+        from modules.uptime import calc_uptime
+        _uptime_pct = calc_uptime(30)
+    except Exception:
+        pass
+    st.metric("近30日可用率", f"{_uptime_pct:.1f}%")
 
 today: date = date.today()
 if not is_market_open(today):

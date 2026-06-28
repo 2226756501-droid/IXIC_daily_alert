@@ -44,6 +44,8 @@ def calc_consecutive_drops(records: list[Record]) -> int:
 
 
 def main() -> None:
+    import time as _time
+    _start: float = _time.time()
     init_history()
     config: dict[str, Any] = load_config()
     multiplier: float = config["sensitivity_multiplier"]
@@ -134,11 +136,18 @@ def main() -> None:
 
 
 if __name__ == "__main__":
+    import time as _time
+    from modules.uptime import record_run
+    _start_t: float = _time.time()
     try:
         main()
+        _dur: float = _time.time() - _start_t
+        record_run(True, round(_dur, 1))
         health = {"status": "ok", "last_success": datetime.now(timezone.utc).isoformat(), "last_error": None, "error_message": None}
     except Exception as e:
         logger.exception("nasdaq.py 运行失败: %s", e)
+        _dur = _time.time() - _start_t
+        record_run(False, round(_dur, 1), str(e))
         health = {"status": "error", "last_success": None, "last_error": datetime.now(timezone.utc).isoformat(), "error_message": str(e)}
         try:
             from modules.mailer import send_email

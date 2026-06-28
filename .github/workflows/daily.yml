@@ -38,3 +38,11 @@ jobs:
           git diff --cached --quiet || git commit -m "daily: update data"
           git pull --rebase origin main
           git push
+      - name: Report health to healthchecks.io
+        if: always()
+        run: |
+          if [ "${{ job.status }}" = "success" ]; then
+            curl -fsS -m 10 "https://hc-ping.com/${{ secrets.HEALTHCHECKS_UUID }}" > /dev/null 2>&1 || true
+          else
+            curl -fsS -m 10 "https://hc-ping.com/${{ secrets.HEALTHCHECKS_UUID }}/fail" > /dev/null 2>&1 || true
+          fi
