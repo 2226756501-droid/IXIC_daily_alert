@@ -14,6 +14,11 @@ BASE_DIR: Path = Path(__file__).resolve().parent.parent
 
 
 def get_env(key: str, default: str = "") -> str:
+    try:
+        import streamlit as st
+        return st.secrets[key]
+    except Exception:
+        pass
     return os.environ.get(key, default)
 
 

@@ -15,7 +15,8 @@ _runner: Any = None
 
 
 def get_deepseek_api_key() -> str:
-    key = os.environ.get("DEEPSEEK_API_KEY", "")
+    from modules.config import get_env
+    key = get_env("DEEPSEEK_API_KEY")
     if not key:
         logger.warning("DEEPSEEK_API_KEY 未配置")
     return key

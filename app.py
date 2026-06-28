@@ -122,6 +122,16 @@ multiplier: float = config.get("sensitivity_multiplier", 1.0)
 if USING_CACHE:
     st.warning("⚠️ GitHub raw 加载失败，使用本地缓存数据（可能不是最新）")
 
+_health_path: str = os.path.join(os.path.dirname(__file__), "health.json")
+if os.path.exists(_health_path):
+    try:
+        with open(_health_path) as f:
+            _health: dict[str, Any] = json.load(f)
+        if _health.get("status") == "error":
+            st.error(f"🚨 最近一次日报运行失败：{_health.get('error_message', '未知错误')}")
+    except Exception:
+        pass
+
 st.set_page_config(page_title="NASDAQ 智能监控", page_icon="📊", layout="wide", initial_sidebar_state="auto")
 st.markdown("""
 <style>
@@ -166,8 +176,16 @@ else:
         days_until: int = (h_date - today).days
         st.caption(f"📅 下一个休市日：{h_date}（{h_name}），还有 {days_until} 天")
 
-tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
-    "📈 行情走势", "📊 统计分析", "📉 回撤分析", "📰 新闻", "⚙️ 异常事件", "🤖 AI 分析"
+    def _save_local_feedback(rating: str, fb_display: pd.DataFrame | None = None) -> None:
+    try:
+        from modules.storage import save_feedback
+        save_feedback(str(date.today()), "Streamlit UI 反馈", rating)
+    except Exception as e:
+        logger.warning("保存反馈失败: %s", e)
+
+
+tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
+    "📈 行情走势", "📊 统计分析", "📉 回撤分析", "📰 新闻", "⚙️ 异常事件", "🤖 AI 分析", "💬 反馈"
 ])
 
 with tab1:
@@ -265,3 +283,42 @@ with tab6:
                 response = agent_engine.chat(prompt, st.session_state.agent_messages[:-1])
             st.markdown(response)
             st.session_state.agent_messages.append({"role": "assistant", "content": response})
+
+with tab7:
+    st.subheader("💬 邮件反馈")
+    FEEDBACK_RAW_URL: str = f"{GITHUB_RAW}/feedback.csv"
+    CACHE_FEEDBACK: str = os.path.join(CACHE_DIR, "feedback.csv")
+
+    try:
+        resp = requests.get(FEEDBACK_RAW_URL, timeout=10)
+        if resp.status_code == 200:
+            fb_df = pd.read_csv(StringIO(resp.text))
+            try_write_cache(resp.text, CACHE_FEEDBACK)
+        elif os.path.exists(CACHE_FEEDBACK):
+            fb_df = pd.read_csv(CACHE_FEEDBACK)
+        else:
+            fb_df = pd.DataFrame(columns=["date", "subject", "rating", "created_at"])
+    except Exception:
+        fb_df = pd.DataFrame(columns=["date", "subject", "rating", "created_at"])
+
+    if not fb_df.empty:
+        fb_display = fb_df.copy()
+        fb_display["rating"] = fb_display["rating"].map({"1": "✅ 满意", "2": "❌ 不满意"}).fillna("待反馈")
+        st.dataframe(fb_display, use_container_width=True, hide_index=True)
+    else:
+        st.info("暂无反馈记录")
+
+    st.divider()
+    st.markdown("##### 提交反馈")
+
+    if st.button("✅ 满意（今日邮件有帮助）"):
+        _save_local_feedback("1")
+        st.success("感谢反馈！")
+        st.rerun()
+
+    if st.button("❌ 不满意（需要改进）"):
+        _save_local_feedback("2")
+        st.success("感谢反馈！我们会持续改进。")
+        st.rerun()
+
+    st.caption("💡 也可直接回复邮件：数字 **1** = 满意，**2** = 不满意")

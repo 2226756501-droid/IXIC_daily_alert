@@ -132,4 +132,19 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+        health = {"status": "ok", "last_success": datetime.now(timezone.utc).isoformat(), "last_error": None, "error_message": None}
+    except Exception as e:
+        logger.exception("nasdaq.py 运行失败: %s", e)
+        health = {"status": "error", "last_success": None, "last_error": datetime.now(timezone.utc).isoformat(), "error_message": str(e)}
+        try:
+            from modules.mailer import send_email
+            send_email("⚠️ NASDAQ 日报运行失败", f"错误信息：{e}\n\n请检查 GitHub Actions 日志。")
+        except Exception:
+            logger.exception("发送告警邮件失败")
+    finally:
+        import json, os
+        health_file = os.path.join(os.path.dirname(__file__), "health.json")
+        with open(health_file, "w") as f:
+            json.dump(health, f, indent=2)

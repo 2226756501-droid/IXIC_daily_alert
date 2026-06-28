@@ -90,19 +90,28 @@ def main() -> None:
             }
         logger.info("已加载 %d-%d (%d 条)", year, month, len(date_map))
 
+    def _normalize_date(d: str) -> str:
+        try:
+            return datetime.strptime(d, "%Y-%m-%d").strftime("%Y-%m-%d")
+        except ValueError:
+            return datetime.strptime(d, "%m/%d/%Y").strftime("%Y-%m-%d")
+
     # Backfill
     filled: int = 0
     for i in need_fill:
         d: str = rows[i]["date"]
+        norm_d: str = _normalize_date(d)
         c: float = float(rows[i]["close"])
-        info = date_map.get(d)
+        info = date_map.get(norm_d)
         if info:
+            rows[i]["date"] = norm_d
             rows[i]["open"] = f"{info['open']:.2f}"
             rows[i]["high"] = f"{info['high']:.2f}"
             rows[i]["low"] = f"{info['low']:.2f}"
             rows[i]["volume"] = f"{info['volume']:.0f}"
             filled += 1
         else:
+            rows[i]["date"] = norm_d
             rows[i]["open"] = rows[i].get("open", f"{c:.2f}")
             rows[i]["high"] = rows[i].get("high", f"{c:.2f}")
             rows[i]["low"] = rows[i].get("low", f"{c:.2f}")
