@@ -45,12 +45,12 @@ CACHE_CONFIG: str = os.path.join(CACHE_DIR, "threshold_config.json")
 USING_CACHE: dict[str, bool] = {}
 
 
-@st.cache_data(ttl=3600, show_spinner="加载数据中…")
+@st.cache_data(ttl=300, show_spinner="加载数据中…")
 def _cached_fetch_csv(url: str, cache_path: str) -> pd.DataFrame | None:
     return fetch_csv_with_cache(url, cache_path)
 
 
-@st.cache_data(ttl=3600, show_spinner=False)
+@st.cache_data(ttl=300, show_spinner=False)
 def _cached_fetch_json(url: str, cache_path: str) -> dict[str, Any]:
     return fetch_json_with_cache(url, cache_path)
 
@@ -121,6 +121,12 @@ multiplier: float = config.get("sensitivity_multiplier", 1.0)
 
 if USING_CACHE:
     st.warning("⚠️ GitHub raw 加载失败，使用本地缓存数据（可能不是最新）")
+
+_col1, _col2 = st.columns([6, 1])
+with _col2:
+    if st.button("🔄 刷新"):
+        st.cache_data.clear()
+        st.rerun()
 
 _health_path: str = os.path.join(os.path.dirname(__file__), "health.json")
 if os.path.exists(_health_path):
