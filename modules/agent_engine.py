@@ -47,7 +47,8 @@ def _build_agent() -> tuple[Any, Any]:
     @function_tool
     def get_today_data() -> str:
         """获取今日纳斯达克指数数据，包括收盘价、涨跌幅、Z-score"""
-        from modules.data_fetcher import get_today_data as _get, load_config
+        from modules.data_fetcher import get_today_data as _get
+        from modules.storage import load_config
 
         config = load_config()
         multiplier = config.get("sensitivity_multiplier", 1.0)
@@ -57,7 +58,7 @@ def _build_agent() -> tuple[Any, Any]:
     @function_tool
     def get_history_summary(days: int = 30) -> str:
         """获取最近 N 天的纳斯达克历史数据摘要，包含每日涨跌幅和Z-score"""
-        from modules.data_fetcher import load_history
+        from modules.storage import load_history
 
         records = load_history()
         if not records:
@@ -91,7 +92,7 @@ def _build_agent() -> tuple[Any, Any]:
     @function_tool
     def get_market_state() -> str:
         """获取当前市场状态：是否异常时段、连跌天数等"""
-        from modules.data_fetcher import load_market_state
+        from modules.storage import load_market_state
 
         state = load_market_state()
         s = state.get("state", "normal")
@@ -110,7 +111,7 @@ def _build_agent() -> tuple[Any, Any]:
     @function_tool
     def get_memory_events() -> str:
         """获取历史异常事件记录，含每次异常的触发Z值、持续天数等"""
-        from modules.data_fetcher import load_memory
+        from modules.storage import load_memory
 
         mem = load_memory()
         events = mem.get("events", [])
@@ -218,7 +219,7 @@ def _build_email_prompt(ctx: dict[str, Any]) -> str:
 
     # Recent feedback summary
     try:
-        from modules.data_fetcher import load_feedback
+        from modules.storage import load_feedback
         fb: list[dict[str, str]] = load_feedback()
         if fb:
             recent_fb: list[dict[str, str]] = fb[-5:]

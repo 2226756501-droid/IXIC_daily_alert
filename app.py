@@ -8,14 +8,16 @@ from typing import Any
 
 sys.path.insert(0, os.path.dirname(__file__))
 
-logging.basicConfig(level=logging.WARNING)
+from modules.logger import setup_logging
+setup_logging(logging.WARNING)
+
 logger: logging.Logger = logging.getLogger(__name__)
 
 import requests
 import streamlit as st
 import pandas as pd
 
-from modules.data_fetcher import safe_json
+from modules.yahoo_client import safe_json
 from modules.stats import describe_z
 from modules.news_fetcher import fetch_nasdaq_news
 from modules.visualizer import (
@@ -43,6 +45,13 @@ CACHE_CONFIG: str = os.path.join(CACHE_DIR, "threshold_config.json")
 USING_CACHE: dict[str, bool] = {}
 
 
+def _get_secret(key: str, default: str = "") -> str:
+    try:
+        return st.secrets.get(key, os.environ.get(key, default))
+    except Exception:
+        return os.environ.get(key, default)
+
+
 @st.cache_data(ttl=3600, show_spinner="加载数据中…")
 def _cached_fetch_csv(url: str, cache_path: str) -> pd.DataFrame | None:
     return fetch_csv_with_cache(url, cache_path)
@@ -58,8 +67,8 @@ def try_write_cache(content: str, path: str) -> None:
         os.makedirs(os.path.dirname(path), exist_ok=True)
         with open(path, "w", encoding="utf-8") as f:
             f.write(content)
-    except Exception:
-        pass
+    except OSError as e:
+        logger.warning("写入缓存失败 %s: %s", path, e)
 
 
 def try_write_json_cache(data: dict, path: str) -> None:
@@ -67,8 +76,8 @@ def try_write_json_cache(data: dict, path: str) -> None:
         os.makedirs(os.path.dirname(path), exist_ok=True)
         with open(path, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2)
-    except Exception:
-        pass
+    except OSError as e:
+        logger.warning("写入 JSON 缓存失败 %s: %s", path, e)
 
 
 def fetch_csv_with_cache(url: str, cache_path: str) -> pd.DataFrame | None:
@@ -81,7 +90,7 @@ def fetch_csv_with_cache(url: str, cache_path: str) -> pd.DataFrame | None:
         df["date"] = pd.to_datetime(df["date"], format="mixed")
         df = df.sort_values("date").reset_index(drop=True)
         return df
-    except Exception:
+    except requests.RequestException:
         logger.warning("GitHub raw 加载失败：%s，尝试本地缓存", url)
         if os.path.exists(cache_path):
             USING_CACHE["history"] = True
@@ -99,7 +108,7 @@ def fetch_json_with_cache(url: str, cache_path: str) -> dict[str, Any]:
         data: dict[str, Any] = resp.json()
         try_write_json_cache(data, cache_path)
         return data
-    except Exception:
+    except requests.RequestException:
         logger.warning("GitHub raw 加载失败：%s，尝试本地缓存", url)
         if os.path.exists(cache_path):
             USING_CACHE["json"] = True

@@ -4,7 +4,7 @@ from typing import Any
 
 logger: logging.Logger = logging.getLogger(__name__)
 
-from modules.data_fetcher import load_history
+from modules.storage import load_history
 
 
 def calc_max_drawdown_3m() -> dict[str, Any] | None:

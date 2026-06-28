@@ -6,22 +6,25 @@ from typing import Any
 
 sys.path.insert(0, os.path.dirname(__file__))
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-)
+from modules.logger import setup_logging
+setup_logging(logging.INFO)
+
 logger: logging.Logger = logging.getLogger("nasdaq")
 
-from modules.data_fetcher import (
-    init_history, load_history, save_history,
-    load_config, load_market_state, save_market_state,
-    load_memory, save_memory, get_today_data, Record,
+from modules.data_fetcher import init_history, get_today_data
+from modules.storage import (
+    load_history, save_history, load_config,
+    load_market_state, save_market_state,
+    load_memory, save_memory, save_feedback,
 )
-from modules.analyzer import record_abnormal, finalize_abnormal
-from modules.stats import build_memory_advice, calc_volatility_regime, calc_volume_ratio, adjust_z_by_regime
+from modules.analyzer import record_abnormal
+from modules.stats import (
+    build_memory_advice, calc_volatility_regime,
+    calc_volume_ratio, adjust_z_by_regime,
+)
 from modules.news_fetcher import fetch_nasdaq_news
 from modules.mailer import build_email, send_email
-from modules.data_fetcher import save_feedback, load_feedback
+from modules.types import Record, MarketState, EmailContext
 
 ABNORMAL_DRAWDOWN_DROPS: int = 4
 ABNORMAL_TRIGGER_DROPS: int = 3
@@ -68,7 +71,7 @@ def main() -> None:
 
     drops: int = calc_consecutive_drops(records)
     is_down: bool = pct < 0
-    state: dict[str, Any] = load_market_state()
+    state: MarketState = load_market_state()
     was_abnormal: bool = state.get("state") == "abnormal"
 
     if drops >= ABNORMAL_DRAWDOWN_DROPS:
@@ -97,21 +100,18 @@ def main() -> None:
 
     save_history(records)
 
-    # Volatility regime & volume
     hist_pcts: list[float] = [r.pct for r in records]
     hist_volumes: list[float] = [r.volume for r in records if r.volume > 0]
     regime: str = calc_volatility_regime(hist_pcts + [pct])
     vol_ratio: float = calc_volume_ratio(volume, hist_volumes)
     adjusted_z, regime_note = adjust_z_by_regime(z_score, regime)
 
-    # Collect context for AI email generation
-    abnormal_state: str = state.get("state", "normal")
-    ctx: dict[str, Any] = {
+    ctx: EmailContext = {
         "msg": msg, "date": data_date, "pct": pct,
         "close": close, "change": change, "z_score": z_score,
         "adjusted_z": round(adjusted_z, 2), "regime": regime,
         "regime_note": regime_note, "vol_ratio": round(vol_ratio, 2),
-        "is_down": is_down, "state": abnormal_state,
+        "is_down": is_down, "state": str(state.get("state", "normal")),
         "drops": drops, "news": abnormal_news,
         "drawdown": state.get("max_drawdown_3m"),
         "recovery": not is_down and was_abnormal,

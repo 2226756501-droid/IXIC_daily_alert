@@ -5,11 +5,12 @@ from typing import Any
 
 from modules.config import get_email_config
 from modules.agent_engine import generate_email
+from modules.types import EmailContext
 
 logger: logging.Logger = logging.getLogger(__name__)
 
 
-def build_email(ctx: dict[str, Any]) -> tuple[str, str]:
+def build_email(ctx: EmailContext) -> tuple[str, str]:
     result = generate_email(ctx)
     if result:
         logger.info("AI 生成邮件成功")
@@ -18,7 +19,7 @@ def build_email(ctx: dict[str, Any]) -> tuple[str, str]:
     return _template_email(ctx)
 
 
-def _template_email(ctx: dict[str, Any]) -> tuple[str, str]:
+def _template_email(ctx: EmailContext) -> tuple[str, str]:
     body: str = ctx["msg"]
     subject: str = f"【纳斯达克数据】{ctx['date']} 涨跌幅 {ctx['pct']:+.2f}%"
 

@@ -1,165 +1,32 @@
-import csv
-import json
 import logging
-import os
-import time
 from datetime import datetime, timezone
-from typing import Any, NamedTuple
-
-import requests
+from typing import Any
 
 from modules.stats import calc_z_score, describe_z
+from modules.storage import (
+    load_history, save_history, load_config,
+    load_market_state, save_market_state,
+    load_memory, save_memory, save_feedback, load_feedback,
+)
+from modules.types import Record, MarketState
+from modules.yahoo_client import fetch_chart, safe_json
+
+__all__ = [
+    "init_history", "get_today_data", "Record",
+    "load_history", "save_history", "load_config",
+    "load_market_state", "save_market_state",
+    "load_memory", "save_memory", "save_feedback", "load_feedback",
+    "safe_json",
+]
 
 logger: logging.Logger = logging.getLogger(__name__)
-
-HISTORY_FILE: str = os.path.join(os.path.dirname(os.path.dirname(__file__)), "history.csv")
-CONFIG_FILE: str = os.path.join(os.path.dirname(os.path.dirname(__file__)), "threshold_config.json")
-STATE_FILE: str = os.path.join(os.path.dirname(os.path.dirname(__file__)), "market_state.json")
-MEMORY_FILE: str = os.path.join(os.path.dirname(os.path.dirname(__file__)), "memory.json")
-FEEDBACK_FILE: str = os.path.join(os.path.dirname(os.path.dirname(__file__)), "feedback.csv")
-
-
-class Record(NamedTuple):
-    date: str
-    close: float
-    change: float
-    pct: float
-    z_score: float
-    open: float
-    high: float
-    low: float
-    volume: float
-    fetch_time: str
-
-
-def _request_with_retry(url: str, headers: dict[str, str], max_retries: int = 3) -> requests.Response | None:
-    for attempt in range(max_retries):
-        try:
-            resp: requests.Response = requests.get(url, headers=headers, timeout=10)
-            resp.raise_for_status()
-            return resp
-        except requests.RequestException as e:
-            if attempt < max_retries - 1:
-                wait: float = 2.0 ** attempt
-                logger.warning("请求失败(第%d次)，%ds后重试: %s", attempt + 1, wait, e)
-                time.sleep(wait)
-            else:
-                logger.warning("请求失败，已重试%d次: %s", max_retries, e)
-                return None
-    return None
-
-
-def safe_json(url: str) -> dict[str, Any]:
-    resp: requests.Response | None = _request_with_retry(url, {"User-Agent": "Mozilla/5.0"})
-    if resp is None:
-        return {}
-    try:
-        return resp.json()
-    except Exception:
-        return {}
-
-
-def fetch_yahoo_chart(range_str: str = "1d") -> dict[str, Any]:
-    url: str = f"https://query1.finance.yahoo.com/v8/finance/chart/%5EIXIC?range={range_str}&interval=1d"
-    resp: requests.Response | None = _request_with_retry(url, {"User-Agent": "Mozilla/5.0"})
-    if resp is None:
-        return {}
-    try:
-        return resp.json()
-    except Exception as e:
-        logger.warning("Yahoo Finance API 解析失败: %s", e)
-        return {}
-
-
-def load_history() -> list[Record]:
-    if not os.path.exists(HISTORY_FILE):
-        return []
-    with open(HISTORY_FILE, "r", encoding="utf-8") as f:
-        rows: list[dict[str, str]] = list(csv.DictReader(f))
-    result: list[Record] = []
-    for row in rows:
-        c = float(row["close"])
-        result.append(Record(
-            date=row["date"], close=c,
-            change=float(row.get("change", "0")),
-            pct=float(row.get("pct", "0")),
-            z_score=float(row.get("z_score", "0")),
-            open=float(row.get("open", str(c))),
-            high=float(row.get("high", str(c))),
-            low=float(row.get("low", str(c))),
-            volume=float(row.get("volume", "0")),
-            fetch_time=row.get("fetch_time", ""),
-        ))
-    return result
-
-
-def save_history(records: list[Record]) -> None:
-    with open(HISTORY_FILE, "w", newline="", encoding="utf-8") as f:
-        w = csv.writer(f)
-        w.writerow(["date", "close", "change", "pct", "z_score", "open", "high", "low", "volume", "fetch_time"])
-        for r in records:
-            w.writerow([r.date, f"{r.close:.2f}", f"{r.change:.2f}", f"{r.pct:.2f}", f"{r.z_score:.2f}",
-                       f"{r.open:.2f}", f"{r.high:.2f}", f"{r.low:.2f}", f"{r.volume:.0f}", r.fetch_time])
-
-
-def load_config() -> dict[str, Any]:
-    if not os.path.exists(CONFIG_FILE):
-        return {"sensitivity_multiplier": 1.0}
-    with open(CONFIG_FILE) as f:
-        return json.load(f)
-
-
-def load_market_state() -> dict[str, Any]:
-    if not os.path.exists(STATE_FILE):
-        return {"state": "normal", "consecutive_drops": 0, "abnormal_since": None, "max_drawdown_3m": None}
-    with open(STATE_FILE) as f:
-        return json.load(f)
-
-
-def save_market_state(state: dict[str, Any]) -> None:
-    with open(STATE_FILE, "w") as f:
-        json.dump(state, f, indent=2)
-
-
-def save_feedback(date: str, subject: str, rating: str = "") -> None:
-    try:
-        has_header: bool = os.path.exists(FEEDBACK_FILE)
-        with open(FEEDBACK_FILE, "a", newline="", encoding="utf-8") as f:
-            w = csv.writer(f)
-            if not has_header:
-                w.writerow(["date", "subject", "rating", "created_at"])
-            w.writerow([date, subject, rating, datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")])
-    except Exception:
-        pass
-
-
-def load_feedback() -> list[dict[str, str]]:
-    if not os.path.exists(FEEDBACK_FILE):
-        return []
-    try:
-        with open(FEEDBACK_FILE, "r", encoding="utf-8") as f:
-            return list(csv.DictReader(f))
-    except Exception:
-        return []
-
-
-def load_memory() -> dict[str, Any]:
-    if not os.path.exists(MEMORY_FILE):
-        return {"events": [], "next_id": 1}
-    with open(MEMORY_FILE) as f:
-        return json.load(f)
-
-
-def save_memory(mem: dict[str, Any]) -> None:
-    with open(MEMORY_FILE, "w") as f:
-        json.dump(mem, f, indent=2)
 
 
 def init_history() -> None:
     if load_history():
         logger.info("历史数据已存在，跳过初始化")
         return
-    data: dict[str, Any] = fetch_yahoo_chart("5y")
+    data: dict[str, Any] = fetch_chart("5y")
     if not data.get("chart", {}).get("result"):
         logger.warning("获取历史数据失败，跳过初始化")
         return
@@ -191,7 +58,7 @@ def init_history() -> None:
 
 
 def get_today_data(multiplier: float = 1.0) -> tuple[str, float, str, float, float, float, float, float, float, float]:
-    data: dict[str, Any] = fetch_yahoo_chart("1d")
+    data: dict[str, Any] = fetch_chart("1d")
     if not data.get("chart", {}).get("result"):
         logger.warning("获取今日数据失败，使用本地缓存")
         records_cache: list[Record] = load_history()

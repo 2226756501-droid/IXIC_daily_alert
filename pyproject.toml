@@ -18,8 +18,21 @@ dependencies = [
     "pandas-market-calendars>=5.4.0",
 ]
 
+[project.scripts]
+nasdaq-run = "nasdaq:main"
+
 [tool.setuptools.packages.find]
 include = ["modules*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I"]
+
+[tool.ruff.format]
+quote-style = "double"
