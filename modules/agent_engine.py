@@ -65,17 +65,17 @@ def _build_agent() -> tuple[Any, Any]:
 
         recent = records[-days:]
         total = len(recent)
-        avg_pct = sum(r[3] for r in recent) / total
-        max_pct = max(r[3] for r in recent)
-        min_pct = min(r[3] for r in recent)
-        dates = f"{recent[0][0]} ~ {recent[-1][0]}"
+        avg_pct = sum(r.pct for r in recent) / total
+        max_pct = max(r.pct for r in recent)
+        min_pct = min(r.pct for r in recent)
+        dates = f"{recent[0].date} ~ {recent[-1].date}"
 
         return (
             f"最近 {total} 天（{dates}）：\n"
             f"- 平均涨跌幅：{avg_pct:+.2f}%\n"
             f"- 最大涨幅：{max_pct:+.2f}%\n"
             f"- 最大跌幅：{min_pct:+.2f}%\n"
-            f"- 最新 Z-score：{recent[-1][4]:.2f}"
+            f"- 最新 Z-score：{recent[-1].z_score:.2f}"
         )
 
     @function_tool
@@ -83,7 +83,7 @@ def _build_agent() -> tuple[Any, Any]:
         """获取今日纳斯达克相关新闻标题"""
         from modules.news_fetcher import fetch_nasdaq_news
 
-        news = fetch_nasdaq_news(max_items=5)
+        news = fetch_nasdaq_news()
         if not news:
             return "暂无相关新闻"
         return "\n".join(f"- {n}" for n in news)

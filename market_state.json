@@ -1,4 +1,5 @@
 {
+<<<<<<< HEAD
   "sensitivity_multiplier": 2.0,
   "max_drawdown_3m": {
     "max_drawdown_pct": -6.4,
@@ -7,4 +8,7 @@
   "state": "abnormal",
   "abnormal_since": "2026-06-26",
   "consecutive_drops": 5
+=======
+  "consecutive_drops": 1
+>>>>>>> bee73e1 (refactor: 大规模代码重构与质量改进)
 }

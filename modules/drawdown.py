@@ -1,34 +1,26 @@
-import csv
 import logging
-import os
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
 logger: logging.Logger = logging.getLogger(__name__)
 
-HISTORY_FILE: str = os.path.join(os.path.dirname(os.path.dirname(__file__)), "history.csv")
+from modules.data_fetcher import load_history
 
 
 def calc_max_drawdown_3m() -> dict[str, Any] | None:
-    try:
-        with open(HISTORY_FILE, "r", encoding="utf-8") as f:
-            rows: list[dict[str, str]] = list(csv.DictReader(f))
-    except FileNotFoundError:
-        logger.warning("回撤计算：history.csv 不存在")
+    records = load_history()
+    if len(records) < 2:
         return None
 
     cutoff: datetime = datetime.now(timezone.utc) - timedelta(days=90)
     closes: list[tuple[datetime, float]] = []
-    for r in rows:
+    for r in records:
         try:
-            dt: datetime = datetime.strptime(r["date"], "%Y-%m-%d").replace(tzinfo=timezone.utc)
+            dt: datetime = datetime.strptime(r.date, "%Y-%m-%d").replace(tzinfo=timezone.utc)
         except ValueError:
-            try:
-                dt = datetime.strptime(r["date"], "%m/%d/%Y").replace(tzinfo=timezone.utc)
-            except ValueError:
-                continue
+            continue
         if dt >= cutoff:
-            closes.append((dt, float(r["close"])))
+            closes.append((dt, r.close))
 
     if len(closes) < 2:
         return None

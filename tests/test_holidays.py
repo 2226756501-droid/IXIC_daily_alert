@@ -29,11 +29,11 @@ def test_next_holiday_exists() -> None:
     assert h_name != ""
 
 
-def test_next_holiday_after_last() -> None:
-    """超过最后一个节假日应该返回 None"""
-    d: date = date(2028, 1, 1)
+def test_next_holiday_far_future() -> None:
+    """极远的未来仍有节假日定义"""
+    d: date = date(2080, 1, 1)
     h_date, h_name = next_holiday(d)
-    assert h_date is None
+    assert h_date is not None
 
 
 def test_next_market_day_after_weekend() -> None:

@@ -37,9 +37,9 @@ def test_plot_z_score_returns_figure() -> None:
 def test_plot_z_score_threshold_changes_with_multiplier() -> None:
     fig_default = plot_z_score(_make_df())
     fig_double = plot_z_score(_make_df(), multiplier=2.0)
-    # shapes[0] 是上面的红线，检查 y 坐标不同
-    assert fig_default.layout.shapes[0].y0 == 2.0
-    assert fig_double.layout.shapes[0].y0 == 4.0
+    # shapes[2] 是 2σ 红线（shapes[0]=1σ, shapes[1]=-1σ, shapes[2]=+2σ）
+    assert fig_default.layout.shapes[2].y0 == 2.0
+    assert fig_double.layout.shapes[2].y0 == 4.0
 
 
 def test_plot_comparison_chart_returns_figure() -> None:

@@ -4,7 +4,7 @@ import logging
 import os
 import time
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, NamedTuple
 
 import requests
 
@@ -18,7 +18,18 @@ STATE_FILE: str = os.path.join(os.path.dirname(os.path.dirname(__file__)), "mark
 MEMORY_FILE: str = os.path.join(os.path.dirname(os.path.dirname(__file__)), "memory.json")
 FEEDBACK_FILE: str = os.path.join(os.path.dirname(os.path.dirname(__file__)), "feedback.csv")
 
-Record = tuple[str, float, float, float, float, float, float, float, float, str]
+
+class Record(NamedTuple):
+    date: str
+    close: float
+    change: float
+    pct: float
+    z_score: float
+    open: float
+    high: float
+    low: float
+    volume: float
+    fetch_time: str
 
 
 def _request_with_retry(url: str, headers: dict[str, str], max_retries: int = 3) -> requests.Response | None:
@@ -39,13 +50,13 @@ def _request_with_retry(url: str, headers: dict[str, str], max_retries: int = 3)
 
 
 def safe_json(url: str) -> dict[str, Any]:
+    resp: requests.Response | None = _request_with_retry(url, {"User-Agent": "Mozilla/5.0"})
+    if resp is None:
+        return {}
     try:
-        resp: requests.Response = requests.get(url, timeout=10)
-        if resp.status_code == 200:
-            return resp.json()
+        return resp.json()
     except Exception:
-        pass
-    return {}
+        return {}
 
 
 def fetch_yahoo_chart(range_str: str = "1d") -> dict[str, Any]:
@@ -68,16 +79,16 @@ def load_history() -> list[Record]:
     result: list[Record] = []
     for row in rows:
         c = float(row["close"])
-        result.append((
-            row["date"], c,
-            float(row.get("change", "0")),
-            float(row.get("pct", "0")),
-            float(row.get("z_score", "0")),
-            float(row.get("open", str(c))),
-            float(row.get("high", str(c))),
-            float(row.get("low", str(c))),
-            float(row.get("volume", "0")),
-            row.get("fetch_time", ""),
+        result.append(Record(
+            date=row["date"], close=c,
+            change=float(row.get("change", "0")),
+            pct=float(row.get("pct", "0")),
+            z_score=float(row.get("z_score", "0")),
+            open=float(row.get("open", str(c))),
+            high=float(row.get("high", str(c))),
+            low=float(row.get("low", str(c))),
+            volume=float(row.get("volume", "0")),
+            fetch_time=row.get("fetch_time", ""),
         ))
     return result
 
@@ -87,13 +98,8 @@ def save_history(records: list[Record]) -> None:
         w = csv.writer(f)
         w.writerow(["date", "close", "change", "pct", "z_score", "open", "high", "low", "volume", "fetch_time"])
         for r in records:
-            fetch_time: str = r[9] if len(r) > 9 else ""
-            open_ = r[5] if len(r) > 5 else r[1]
-            high_ = r[6] if len(r) > 6 else r[1]
-            low_ = r[7] if len(r) > 7 else r[1]
-            volume = r[8] if len(r) > 8 else 0
-            w.writerow([r[0], f"{r[1]:.2f}", f"{r[2]:.2f}", f"{r[3]:.2f}", f"{r[4]:.2f}",
-                       f"{open_:.2f}", f"{high_:.2f}", f"{low_:.2f}", f"{volume:.0f}", fetch_time])
+            w.writerow([r.date, f"{r.close:.2f}", f"{r.change:.2f}", f"{r.pct:.2f}", f"{r.z_score:.2f}",
+                       f"{r.open:.2f}", f"{r.high:.2f}", f"{r.low:.2f}", f"{r.volume:.0f}", r.fetch_time])
 
 
 def load_config() -> dict[str, Any]:
@@ -178,7 +184,7 @@ def init_history() -> None:
             l: float = lows[i] if i < len(lows) and lows[i] is not None else c
             v: float = float(volumes[i]) if i < len(volumes) and volumes[i] is not None else 0
             pcts.append(pct)
-            records.append((date, c, chg, pct, calc_z_score(pcts), o, h, l, v, ""))
+            records.append(Record(date, c, chg, pct, calc_z_score(pcts), o, h, l, v, ""))
             prev = c
     save_history(records)
     logger.info("历史数据已初始化，共 %s 条", len(records))
@@ -191,11 +197,7 @@ def get_today_data(multiplier: float = 1.0) -> tuple[str, float, str, float, flo
         records_cache: list[Record] = load_history()
         if records_cache:
             last: Record = records_cache[-1]
-            open_ = last[5] if len(last) > 5 else last[1]
-            high_ = last[6] if len(last) > 6 else last[1]
-            low_ = last[7] if len(last) > 7 else last[1]
-            volume = last[8] if len(last) > 8 else 0
-            return (f"使用缓存数据：{last[0]} 收盘 {last[1]:.2f}", last[3], last[0], last[1], last[2], last[4], open_, high_, low_, volume)
+            return (f"使用缓存数据：{last.date} 收盘 {last.close:.2f}", last.pct, last.date, last.close, last.change, last.z_score, last.open, last.high, last.low, last.volume)
         return ("无法获取数据", 0.0, "", 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
     results: dict[str, Any] = data["chart"]["result"][0]
     meta: dict[str, Any] = results["meta"]
@@ -232,7 +234,7 @@ def get_today_data(multiplier: float = 1.0) -> tuple[str, float, str, float, flo
     direction: str = "📈 涨" if change >= 0 else "📉 跌"
 
     records: list[Record] = load_history()
-    hist_pcts: list[float] = [r[3] for r in records]
+    hist_pcts: list[float] = [r.pct for r in records]
     z_score: float = calc_z_score(hist_pcts + [pct])
     level: str = describe_z(z_score, multiplier)
 

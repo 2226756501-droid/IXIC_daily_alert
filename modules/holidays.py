@@ -2,83 +2,80 @@ import logging
 from datetime import date, timedelta
 from typing import Any
 
+import pandas as pd
+import pandas_market_calendars as mcal
+
 logger: logging.Logger = logging.getLogger(__name__)
 
-
-US_MARKET_HOLIDAYS_2026: list[date] = [
-    date(2026, 1, 1),
-    date(2026, 1, 19),
-    date(2026, 2, 16),
-    date(2026, 4, 3),
-    date(2026, 5, 25),
-    date(2026, 6, 19),
-    date(2026, 7, 3),
-    date(2026, 9, 7),
-    date(2026, 11, 26),
-    date(2026, 12, 25),
-]
-
-US_MARKET_HOLIDAYS_2027: list[date] = [
-    date(2027, 1, 1),
-    date(2027, 1, 18),
-    date(2027, 2, 15),
-    date(2027, 3, 26),
-    date(2027, 5, 31),
-    date(2027, 6, 18),
-    date(2027, 7, 5),
-    date(2027, 9, 6),
-    date(2027, 11, 25),
-    date(2027, 12, 24),
-    date(2027, 12, 31),
-]
+_calendar = mcal.get_calendar("XNYS")
 
 
-def get_holidays() -> list[date]:
-    return US_MARKET_HOLIDAYS_2026 + US_MARKET_HOLIDAYS_2027
+def _build_holiday_name_map() -> dict[date, str]:
+    name_map: dict[date, str] = {}
+    try:
+        rules = _calendar.regular_holidays.rules
+        for rule in rules:
+            try:
+                for year in range(2024, 2032):
+                    dates = rule.dates(
+                        pd.Timestamp(f"{year}-01-01"),
+                        pd.Timestamp(f"{year}-12-31"),
+                    )
+                    if isinstance(dates, pd.DatetimeIndex):
+                        for d in dates:
+                            name_map[d.date()] = rule.name
+            except Exception:
+                continue
+    except Exception as e:
+        logger.warning("构建节假日名称映射失败: %s", e)
+    return name_map
+
+
+_HOLIDAY_NAMES: dict[date, str] = _build_holiday_name_map()
 
 
 def is_market_open(d: date) -> bool:
-    if d.weekday() >= 5:
-        return False
-    return d not in get_holidays()
+    try:
+        sched = _calendar.schedule(start_date=d, end_date=d)
+        return not sched.empty
+    except Exception as e:
+        logger.warning("查询交易日失败 %s: %s", d, e)
+        return d.weekday() < 5
 
 
 def next_holiday(d: date | None = None) -> tuple[date | None, str]:
     if d is None:
         d = date.today()
-    names: dict[date, str] = {
-        date(2026, 1, 1): "元旦",
-        date(2026, 1, 19): "马丁·路德·金纪念日",
-        date(2026, 2, 16): "总统日",
-        date(2026, 4, 3): "耶稣受难日",
-        date(2026, 5, 25): "阵亡将士纪念日",
-        date(2026, 6, 19): "六月节",
-        date(2026, 7, 3): "独立日（调休）",
-        date(2026, 9, 7): "劳动节",
-        date(2026, 11, 26): "感恩节",
-        date(2026, 12, 25): "圣诞节",
-        date(2027, 1, 1): "元旦",
-        date(2027, 1, 18): "马丁·路德·金纪念日",
-        date(2027, 2, 15): "总统日",
-        date(2027, 3, 26): "耶稣受难日",
-        date(2027, 5, 31): "阵亡将士纪念日",
-        date(2027, 6, 18): "六月节（调休）",
-        date(2027, 7, 5): "独立日（调休）",
-        date(2027, 9, 6): "劳动节",
-        date(2027, 11, 25): "感恩节",
-        date(2027, 12, 24): "圣诞节（调休）",
-        date(2027, 12, 31): "元旦前夕",
-    }
-    for h in sorted(get_holidays()):
-        if h >= d:
-            return h, names.get(h, "休市日")
+    try:
+        hdays: tuple = _calendar.holidays().holidays
+        future: list[date] = []
+        for h in hdays:
+            hd: date = pd.Timestamp(h).date()
+            if hd >= d:
+                future.append(hd)
+        future.sort()
+        if future:
+            hd = future[0]
+            return hd, _HOLIDAY_NAMES.get(hd, "休市日")
+    except Exception as e:
+        logger.warning("查询下一个节假日失败: %s", e)
     return None, ""
 
 
 def next_market_day(d: date | None = None) -> date:
     if d is None:
         d = date.today()
-    d += timedelta(days=1)
-    while not is_market_open(d):
-        d += timedelta(days=1)
-    return d
+    start: date = d + timedelta(days=1)
+    try:
+        valid = _calendar.valid_days(
+            start_date=start,
+            end_date=start + timedelta(days=365),
+        )
+        if len(valid) > 0:
+            return valid[0].date()
+    except Exception as e:
+        logger.warning("查询下一个交易日失败: %s", e)
+    candidate: date = start
+    while candidate.weekday() >= 5:
+        candidate += timedelta(days=1)
+    return candidate

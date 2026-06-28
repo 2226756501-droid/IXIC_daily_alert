@@ -20,15 +20,19 @@ from modules.data_fetcher import (
 from modules.analyzer import record_abnormal, finalize_abnormal
 from modules.stats import build_memory_advice, calc_volatility_regime, calc_volume_ratio, adjust_z_by_regime
 from modules.news_fetcher import fetch_nasdaq_news
-from modules.config import get_email_config
-from modules.agent_engine import generate_email
+from modules.mailer import build_email, send_email
 from modules.data_fetcher import save_feedback, load_feedback
+
+ABNORMAL_DRAWDOWN_DROPS: int = 4
+ABNORMAL_TRIGGER_DROPS: int = 3
+ADVICE_TRIGGER_DROPS: int = 2
+ADVICE_TRIGGER_Z: float = -1.5
 
 
 def calc_consecutive_drops(records: list[Record]) -> int:
     count: int = 0
     for rec in reversed(records):
-        if rec[3] < 0:
+        if rec.pct < 0:
             count += 1
         else:
             break
@@ -42,13 +46,17 @@ def main() -> None:
     msg, pct, data_date, close, change, z_score, open_, high_, low_, volume = get_today_data(multiplier)
     logger.info(msg)
 
+    if not data_date:
+        logger.warning("未获取到有效数据，跳过后续处理")
+        return
+
     records: list[Record] = load_history()
     fetch_time: str = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
-    new_record: Record = (data_date, close, change, pct, z_score, open_, high_, low_, volume, fetch_time)
+    new_record: Record = Record(data_date, close, change, pct, z_score, open_, high_, low_, volume, fetch_time)
 
     updated: bool = False
     for i, rec in enumerate(records):
-        if rec[0] == data_date:
+        if rec.date == data_date:
             records[i] = new_record
             updated = True
             logger.info("已更新 %s 数据", data_date)
@@ -63,14 +71,14 @@ def main() -> None:
     state: dict[str, Any] = load_market_state()
     was_abnormal: bool = state.get("state") == "abnormal"
 
-    if drops >= 4:
+    if drops >= ABNORMAL_DRAWDOWN_DROPS:
         from modules.drawdown import calc_max_drawdown_3m
         dd: dict[str, Any] | None = calc_max_drawdown_3m()
         if dd:
             state["max_drawdown_3m"] = dd
 
     abnormal_news: list[str] | None = None
-    if is_down and drops >= 3 and not was_abnormal:
+    if is_down and drops >= ABNORMAL_TRIGGER_DROPS and not was_abnormal:
         state["state"] = "abnormal"
         state["abnormal_since"] = data_date
         mem: dict[str, Any] = load_memory()
@@ -90,8 +98,8 @@ def main() -> None:
     save_history(records)
 
     # Volatility regime & volume
-    hist_pcts: list[float] = [r[3] for r in records]
-    hist_volumes: list[float] = [r[8] for r in records if r[8] > 0]
+    hist_pcts: list[float] = [r.pct for r in records]
+    hist_volumes: list[float] = [r.volume for r in records if r.volume > 0]
     regime: str = calc_volatility_regime(hist_pcts + [pct])
     vol_ratio: float = calc_volume_ratio(volume, hist_volumes)
     adjusted_z, regime_note = adjust_z_by_regime(z_score, regime)
@@ -110,7 +118,7 @@ def main() -> None:
         "advice": None,
     }
 
-    if is_down and drops >= 2 and z_score <= -1.5:
+    if is_down and drops >= ADVICE_TRIGGER_DROPS and z_score <= ADVICE_TRIGGER_Z:
         mem = load_memory()
         advice: str = build_memory_advice(mem.get("events", []), z_score, drops)
         if advice:
@@ -121,53 +129,6 @@ def main() -> None:
     save_feedback(data_date, subject)
     send_email(subject, body)
     logger.info("邮件已发送")
-
-
-def build_email(ctx: dict[str, Any]) -> tuple[str, str]:
-    """Try AI generation first, fall back to template."""
-    result = generate_email(ctx)
-    if result:
-        logger.info("AI 生成邮件成功")
-        return result
-    logger.info("AI 邮件生成不可用，使用模板")
-    return _template_email(ctx)
-
-
-def _template_email(ctx: dict[str, Any]) -> tuple[str, str]:
-    """Template-based email as fallback."""
-    body: str = ctx["msg"]
-    subject: str = f"【纳斯达克数据】{ctx['date']} 涨跌幅 {ctx['pct']:+.2f}%"
-
-    if ctx.get("news"):
-        body += "\n────\n📰 今日相关新闻：\n" + "\n".join(f"{i+1}. {h}" for i, h in enumerate(ctx["news"]))
-    if ctx.get("drawdown"):
-        dd: dict[str, Any] = ctx["drawdown"]
-        body += f"\n────\n📉 近3月最大回撤：{dd['max_drawdown_pct']}%（{dd['date']}）"
-        subject = f"【异常时段】纳斯达克连跌{ctx['drops']}天，近3月最大回撤 {dd['max_drawdown_pct']}%"
-    if ctx.get("recovery"):
-        body += f"\n────\n✅ 异常时段结束（连跌{ctx['drops']}天后恢复）"
-        subject = f"【纳斯达克数据】异常时段结束 - {ctx['date']} 涨跌幅 {ctx['pct']:+.2f}%"
-    if ctx.get("advice"):
-        body += "\n" + ctx["advice"]
-
-    return subject, body
-
-
-def send_email(subject: str, body: str) -> None:
-    import smtplib
-    from email.mime.text import MIMEText
-
-    cfg: dict[str, Any] = get_email_config()
-    if not cfg["user"] or not cfg["password"]:
-        logger.warning("邮箱未配置，跳过发送")
-        return
-    msg: Any = MIMEText(body, "plain", "utf-8")
-    msg["Subject"] = subject
-    msg["From"] = cfg["user"]
-    msg["To"] = cfg["notify"]
-    with smtplib.SMTP_SSL(cfg["server"], cfg["port"]) as server:
-        server.login(cfg["user"], cfg["password"])
-        server.send_message(msg)
 
 
 if __name__ == "__main__":

@@ -14,7 +14,7 @@ RSS_URLS: list[str] = [
 NASDAQ_KEYWORDS: list[str] = ["nasdaq", "ixic", "科技股", "纳斯达克", "美联储", "interest rate"]
 
 
-def fetch_nasdaq_news(max_items: int = 3) -> list[str]:
+def fetch_nasdaq_news(max_items: int = 5) -> list[str]:
     headlines: list[str] = []
     for url in RSS_URLS:
         try:

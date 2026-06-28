@@ -77,7 +77,6 @@ def fetch_csv_with_cache(url: str, cache_path: str) -> pd.DataFrame | None:
         resp.raise_for_status()
         content: str = resp.text
         try_write_cache(content, cache_path)
-        from io import StringIO
         df: pd.DataFrame = pd.read_csv(StringIO(content))
         df["date"] = pd.to_datetime(df["date"], format="mixed")
         df = df.sort_values("date").reset_index(drop=True)
