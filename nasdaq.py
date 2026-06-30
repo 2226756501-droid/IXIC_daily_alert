@@ -92,6 +92,7 @@ def main() -> None:
         save_memory(mem)
         abnormal_news = fetch_nasdaq_news()
     elif not is_down and was_abnormal:
+        drops = state.get("consecutive_drops", drops)
         state["state"] = "normal"
         state["abnormal_since"] = None
         state["max_drawdown_3m"] = None
