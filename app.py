@@ -470,8 +470,9 @@ with tab8:
 
             st.caption(f"共 {len(events_detail)} 条历史预警（倍率=1.0），当前倍率 {_current_mult} 触发 {len(cur_filtered)} 条")
 
+OZ_TO_GRAM: float = 31.1034768
+
 with tab9:
-    OZ_TO_GRAM: float = 31.1034768
     gold_cny_gram: float = gold_cny / OZ_TO_GRAM if gold_cny else 0.0
 
     st.subheader("🥇 黄金价格监控")
@@ -502,7 +503,7 @@ with tab9:
             gold_cny_df = gold_df_90d.copy()
             for c in ["open", "high", "low", "close"]:
                 if c in gold_cny_df.columns:
-                    gold_cny_df[c] = gold_cny_df[c] * gold_rate / OZ_TO_GRAM
+                    gold_cny_df[c] = pd.to_numeric(gold_cny_df[c], errors="coerce") * (gold_rate or 7.25) / OZ_TO_GRAM
             st.plotly_chart(plot_gold_candlestick(gold_cny_df, yaxis_title="价格 (¥/克)"), use_container_width=True)
 
         st.subheader("每日涨跌幅")
