@@ -129,6 +129,19 @@ def main() -> None:
             ctx["advice"] = advice
 
     subject, body = build_email(ctx)
+
+    try:
+        from modules.gold_fetcher import get_today_gold, init_gold_history
+        init_gold_history()
+        gold_msg, gold_pct, gold_date, gold_close, gold_change, gold_open, gold_high, gold_low, gold_volume, gold_cny, gold_rate, gold_z = get_today_gold()
+        OZ_TO_GRAM: float = 31.1034768
+        gold_cny_gram: float = gold_cny / OZ_TO_GRAM if gold_cny else 0.0
+        body += f"\n\n🥇 黄金价格\n{gold_msg}"
+        if gold_close:
+            body += f"\n人民币 {gold_cny_gram:.2f} 元/克"
+    except Exception as e:
+        logger.warning("获取黄金数据失败: %s", e)
+
     body += "\n\n────\n💬 这封邮件对你有帮助吗？回复 1=满意 2=不满意"
     save_feedback(data_date, subject)
     send_email(subject, body)
