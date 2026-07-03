@@ -4,6 +4,8 @@ from typing import Any
 
 import requests
 
+from modules.config import get_env
+
 logger: logging.Logger = logging.getLogger(__name__)
 
 
@@ -34,13 +36,30 @@ def safe_json(url: str) -> dict[str, Any]:
         return {}
 
 
-def fetch_chart(range_str: str = "1d") -> dict[str, Any]:
-    url: str = f"https://query1.finance.yahoo.com/v8/finance/chart/%5EIXIC?range={range_str}&interval=1d"
+def fetch_chart(range_str: str = "1d", symbol: str | None = None) -> dict[str, Any]:
+    ticker: str = symbol or get_env("NASDAQ_SYMBOL", "^IXIC")
+    encoded: str = ticker.replace("^", "%5E")
+    url: str = f"https://query1.finance.yahoo.com/v8/finance/chart/{encoded}?range={range_str}&interval=1d"
     resp: requests.Response | None = request_with_retry(url, {"User-Agent": "Mozilla/5.0"})
     if resp is None:
-        return {}
+        return _fallback_fetch(ticker, range_str)
     try:
         return resp.json()
     except Exception as e:
         logger.warning("Yahoo Finance API 解析失败: %s", e)
+        return _fallback_fetch(ticker, range_str)
+
+
+def _fallback_fetch(symbol: str, range_str: str) -> dict[str, Any]:
+    logger.info("尝试备用数据源: query2.finance.yahoo.com")
+    encoded: str = symbol.replace("^", "%5E")
+    url: str = f"https://query2.finance.yahoo.com/v8/finance/chart/{encoded}?range={range_str}&interval=1d"
+    resp = request_with_retry(url, {"User-Agent": "Mozilla/5.0"})
+    if resp is None:
+        logger.warning("备用数据源也失败")
+        return {}
+    try:
+        return resp.json()
+    except Exception as e:
+        logger.warning("备用数据源解析失败: %s", e)
         return {}

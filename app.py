@@ -150,10 +150,22 @@ if os.path.exists(_health_path):
 st.set_page_config(page_title="NASDAQ 智能监控", page_icon="📊", layout="wide", initial_sidebar_state="auto")
 st.markdown("""
 <style>
-    .block-container { padding: 1rem 1rem 2rem; }
+    .block-container { padding: 1rem 1rem 2rem; max-width: 100%; }
     @media (max-width: 640px) {
         .block-container { padding: 0.5rem; }
         div[data-testid="column"] { min-width: 50% !important; }
+        div[data-testid="stMetricValue"] { font-size: 1.2rem !important; }
+        div[data-testid="stMetricDelta"] { font-size: 0.8rem !important; }
+        button[data-testid="baseButton-secondary"] { font-size: 0.75rem !important; padding: 0.2rem 0.5rem !important; }
+        .stTabs [data-baseweb="tab-list"] { gap: 0.2rem; }
+        .stTabs [data-baseweb="tab"] { font-size: 0.7rem !important; padding: 0.4rem 0.6rem !important; }
+    }
+    @media (max-width: 1024px) {
+        div[data-testid="column"] { min-width: 33% !important; }
+    }
+    div[data-testid="stMetric"] { background: #f8f9fa; border-radius: 8px; padding: 0.5rem; }
+    @media (prefers-color-scheme: dark) {
+        div[data-testid="stMetric"] { background: #1e1e1e; }
     }
 </style>
 """, unsafe_allow_html=True)
@@ -205,14 +217,14 @@ gold_records: list[Any] = load_gold_history()
 gold_state: dict[str, Any] = load_gold_state()
 try:
     _gold_today = get_today_gold()
-    gold_msg, gold_pct, gold_date, gold_close, gold_change, gold_open, gold_high, gold_low, gold_volume, gold_cny, gold_rate = _gold_today
+    gold_msg, gold_pct, gold_date, gold_close, gold_change, gold_open, gold_high, gold_low, gold_volume, gold_cny, gold_rate, gold_z = _gold_today
     if not gold_date:
         gold_msg = "暂无黄金数据"
 except Exception:
     gold_msg = "黄金数据获取失败"
     gold_pct = gold_date = gold_close = gold_change = 0.0
     gold_open = gold_high = gold_low = gold_volume = 0.0
-    gold_cny = gold_rate = 0.0
+    gold_cny = gold_rate = gold_z = 0.0
 
 gold_df: pd.DataFrame | None = None
 if gold_records:

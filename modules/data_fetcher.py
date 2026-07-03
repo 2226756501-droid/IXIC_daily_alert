@@ -23,17 +23,17 @@ logger: logging.Logger = logging.getLogger(__name__)
 
 
 def init_history() -> None:
-    if load_history():
-        logger.info("历史数据已存在，跳过初始化")
-        return
+    records: list[Record] = load_history()
+    existing: set[str] = {r.date for r in records}
     data: dict[str, Any] = fetch_chart("5y")
     if not data.get("chart", {}).get("result"):
+        if records:
+            logger.info("历史数据共 %s 条，无法获取更新", len(records))
+            return
         logger.warning("获取历史数据失败，跳过初始化")
         return
     results: dict[str, Any] = data["chart"]["result"][0]
-    pcts: list[float] = []
-    records: list[Record] = []
-    prev: float | None = None
+    pcts: list[float] = [r.pct for r in records]
     timestamps: list[int] = results["timestamp"]
     quote: dict[str, Any] = results["indicators"]["quote"][0]
     closes: list[float | None] = quote["close"]
@@ -41,9 +41,14 @@ def init_history() -> None:
     highs: list[float | None] = quote.get("high", [])
     lows: list[float | None] = quote.get("low", [])
     volumes: list[float | None] = quote.get("volume", [])
+    new_records: list[Record] = []
+    prev: float | None = records[-1].close if records else None
     for i, (ts, c) in enumerate(zip(timestamps, closes)):
         if c is not None:
             date: str = datetime.fromtimestamp(ts, tz=timezone.utc).strftime("%Y-%m-%d")
+            if date in existing:
+                prev = c
+                continue
             chg: float = c - prev if prev else 0
             pct: float = chg / prev * 100 if prev else 0
             o: float = opens[i] if i < len(opens) and opens[i] is not None else c
@@ -51,10 +56,15 @@ def init_history() -> None:
             l: float = lows[i] if i < len(lows) and lows[i] is not None else c
             v: float = float(volumes[i]) if i < len(volumes) and volumes[i] is not None else 0
             pcts.append(pct)
-            records.append(Record(date, c, chg, pct, calc_z_score(pcts), o, h, l, v, ""))
+            new_records.append(Record(date, c, chg, pct, calc_z_score(pcts), o, h, l, v, ""))
             prev = c
-    save_history(records)
-    logger.info("历史数据已初始化，共 %s 条", len(records))
+    if new_records:
+        records.extend(new_records)
+        records.sort(key=lambda r: r.date)
+        save_history(records)
+        logger.info("历史数据已更新，新增 %s 条，共 %s 条", len(new_records), len(records))
+    else:
+        logger.info("历史数据共 %s 条，无需更新", len(records))
 
 
 def get_today_data(multiplier: float = 1.0) -> tuple[str, float, str, float, float, float, float, float, float, float]:

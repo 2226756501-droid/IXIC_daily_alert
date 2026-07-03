@@ -12,15 +12,17 @@ setup_logging(logging.INFO)
 logger: logging.Logger = logging.getLogger("gold")
 
 from modules.gold_fetcher import get_today_gold, init_gold_history
-from modules.gold_storage import load_gold_history, load_gold_state, save_gold_state
+from modules.gold_storage import load_gold_history, load_gold_state, save_gold_history, save_gold_state
 from modules.gold_types import GoldRecord
+from modules.gold_alert import check_gold_alert
+from modules.webhook import send_webhook
 
 
 def main() -> None:
     import time as _time
     _start: float = _time.time()
     init_gold_history()
-    msg, pct, data_date, close, change, open_, high_, low_, volume, cny_price, rate = get_today_gold()
+    msg, pct, data_date, close, change, open_, high_, low_, volume, cny_price, rate, z = get_today_gold()
     logger.info(msg)
 
     if not data_date:
@@ -43,7 +45,6 @@ def main() -> None:
         records.append(new_record)
         logger.info("已记录 %s 黄金数据", data_date)
 
-    from modules.gold_storage import save_gold_history
     save_gold_history(records)
 
     state: dict[str, Any] = load_gold_state()
@@ -59,8 +60,10 @@ def main() -> None:
         state["direction"] = "flat"
     save_gold_state(state)
 
-    logger.info("黄金价格: $%.2f (¥%.2f) | 涨跌: %+.2f%% | 汇率: %.4f | 连续上涨: %d天 | 连续下跌: %d天",
-                close, cny_price, pct, rate, state.get("consecutive_rises", 0), state.get("consecutive_drops", 0))
+    check_gold_alert(z, close, pct, cny_price, data_date)
+
+    logger.info("黄金价格: $%.2f (¥%.2f) | 涨跌: %+.2f%% | Z: %.2f | 汇率: %.4f | 连续上涨: %d天 | 连续下跌: %d天",
+                close, cny_price, pct, z, rate, state.get("consecutive_rises", 0), state.get("consecutive_drops", 0))
 
 
 if __name__ == "__main__":

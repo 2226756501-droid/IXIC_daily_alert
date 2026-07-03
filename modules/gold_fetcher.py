@@ -1,39 +1,24 @@
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
+from modules.config import get_env
 from modules.gold_storage import load_gold_history, save_gold_history
 from modules.gold_types import GoldRecord
 from modules.forex import fetch_usdcny_rate, cny as cny_convert
+from modules.stats import calc_z_score, describe_z
 from modules.yahoo_client import fetch_chart, safe_json
 
 logger: logging.Logger = logging.getLogger(__name__)
 
-GOLD_SYMBOL: str = "GC=F"
+GOLD_SYMBOL: str = get_env("GOLD_SYMBOL", "GC=F")
 
 
 def fetch_gold_chart(range_str: str = "1d") -> dict[str, Any]:
-    from modules.yahoo_client import request_with_retry
-    url: str = f"https://query1.finance.yahoo.com/v8/finance/chart/{GOLD_SYMBOL}?range={range_str}&interval=1d"
-    resp = request_with_retry(url, {"User-Agent": "Mozilla/5.0"})
-    if resp is None:
-        return {}
-    try:
-        return resp.json()
-    except Exception as e:
-        logger.warning("Yahoo Finance 黄金 API 解析失败: %s", e)
-        return {}
+    return fetch_chart(range_str, symbol=GOLD_SYMBOL)
 
 
-def init_gold_history() -> None:
-    records: list[GoldRecord] = load_gold_history()
-    if records:
-        logger.info("黄金历史数据已存在，跳过初始化")
-        return
-    data: dict[str, Any] = fetch_gold_chart("5y")
-    if not data.get("chart", {}).get("result"):
-        logger.warning("获取黄金历史数据失败")
-        return
+def _parse_records(data: dict[str, Any], existing_dates: set[str]) -> tuple[list[GoldRecord], list[float]]:
     results: dict[str, Any] = data["chart"]["result"][0]
     timestamps: list[int] = results["timestamp"]
     quote: dict[str, Any] = results["indicators"]["quote"][0]
@@ -43,10 +28,14 @@ def init_gold_history() -> None:
     lows: list[float | None] = quote.get("low", [])
     volumes: list[float | None] = quote.get("volume", [])
     gold_records: list[GoldRecord] = []
+    pcts: list[float] = []
     prev: float | None = None
     for i, (ts, c) in enumerate(zip(timestamps, closes)):
         if c is not None:
             date: str = datetime.fromtimestamp(ts, tz=timezone.utc).strftime("%Y-%m-%d")
+            if date in existing_dates:
+                prev = c
+                continue
             chg: float = c - prev if prev else 0
             pct: float = chg / prev * 100 if prev else 0
             o: float = opens[i] if i < len(opens) and opens[i] is not None else c
@@ -54,12 +43,29 @@ def init_gold_history() -> None:
             l: float = lows[i] if i < len(lows) and lows[i] is not None else c
             v: float = float(volumes[i]) if i < len(volumes) and volumes[i] is not None else 0
             gold_records.append(GoldRecord(date, c, chg, pct, o, h, l, v, ""))
+            pcts.append(pct)
             prev = c
-    save_gold_history(gold_records)
-    logger.info("黄金历史数据已初始化，共 %s 条", len(gold_records))
+    return gold_records, pcts
 
 
-def get_today_gold() -> tuple[str, float, str, float, float, float, float, float, float, float, float]:
+def init_gold_history() -> None:
+    records: list[GoldRecord] = load_gold_history()
+    existing: set[str] = {r.date for r in records}
+    data: dict[str, Any] = fetch_gold_chart("5y")
+    if not data.get("chart", {}).get("result"):
+        logger.warning("获取黄金历史数据失败")
+        return
+    new_records, _ = _parse_records(data, existing)
+    if new_records:
+        records.extend(new_records)
+        records.sort(key=lambda r: r.date)
+        save_gold_history(records)
+        logger.info("黄金历史数据已更新，新增 %s 条，共 %s 条", len(new_records), len(records))
+    else:
+        logger.info("黄金历史数据共 %s 条，无需更新", len(records))
+
+
+def get_today_gold() -> tuple[str, float, str, float, float, float, float, float, float, float, float, float]:
     data: dict[str, Any] = fetch_gold_chart("1d")
     if not data.get("chart", {}).get("result"):
         logger.warning("获取今日黄金数据失败，使用本地缓存")
@@ -68,8 +74,10 @@ def get_today_gold() -> tuple[str, float, str, float, float, float, float, float
             last: GoldRecord = records_cache[-1]
             rate = fetch_usdcny_rate()
             cny_price = cny_convert(last.close, rate)
-            return (f"使用缓存数据：{last.date} 收盘 ${last.close:.2f}", last.pct, last.date, last.close, last.change, last.open, last.high, last.low, last.volume, cny_price, rate)
-        return ("无法获取数据", 0.0, "", 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 7.25)
+            hist_pcts = [r.pct for r in records_cache]
+            z = calc_z_score(hist_pcts + [last.pct])
+            return (f"使用缓存数据：{last.date} 收盘 ${last.close:.2f}", last.pct, last.date, last.close, last.change, last.open, last.high, last.low, last.volume, cny_price, rate, z)
+        return ("无法获取数据", 0.0, "", 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 7.25, 0.0)
 
     results: dict[str, Any] = data["chart"]["result"][0]
     meta: dict[str, Any] = results["meta"]
@@ -121,9 +129,13 @@ def get_today_gold() -> tuple[str, float, str, float, float, float, float, float
     rate: float = fetch_usdcny_rate()
     cny_price: float = cny_convert(latest_close, rate)
 
+    hist_pcts: list[float] = [r.pct for r in records]
+    z: float = calc_z_score(hist_pcts + [pct])
+    level: str = describe_z(z)
+
     msg: str = (
         f"黄金期货收于 ${latest_close:.2f}/盎司（约 ¥{cny_price:.2f}），"
         f"较前一交易日{direction} ${abs(change):.2f}，涨跌幅 {pct:+.2f}%。\n"
-        f"数据日期 {data_date}，汇率 {rate:.4f}"
+        f"数据日期 {data_date}，汇率 {rate:.4f}，异常度 Z = {z:.2f}（{level}）"
     )
-    return msg, pct, data_date, latest_close, change, open_price, high_price, low_price, volume, cny_price, rate
+    return msg, pct, data_date, latest_close, change, open_price, high_price, low_price, volume, cny_price, rate, z
