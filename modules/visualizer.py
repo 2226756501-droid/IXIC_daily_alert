@@ -140,6 +140,7 @@ def plot_drawdown_analysis(df: pd.DataFrame) -> go.Figure:
 
 
 def plot_gold_price(df: pd.DataFrame) -> go.Figure:
+    # Gold price line chart
     fig: go.Figure = go.Figure()
     fig.add_trace(go.Scatter(
         x=df["date"], y=df["close"],
