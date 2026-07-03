@@ -493,8 +493,17 @@ with tab9:
     if gold_df is not None and not gold_df.empty:
         gold_df_90d: pd.DataFrame = gold_df[gold_df["date"] >= gold_df["date"].max() - pd.Timedelta(days=90)]
 
-        st.subheader("近 90 日 K 线走势")
-        st.plotly_chart(plot_gold_candlestick(gold_df_90d), use_container_width=True)
+        col_k1, col_k2 = st.columns(2)
+        with col_k1:
+            st.subheader("美元/盎司 K 线")
+            st.plotly_chart(plot_gold_candlestick(gold_df_90d), use_container_width=True)
+        with col_k2:
+            st.subheader("人民币/克 K 线")
+            gold_cny_df = gold_df_90d.copy()
+            for c in ["open", "high", "low", "close"]:
+                if c in gold_cny_df.columns:
+                    gold_cny_df[c] = gold_cny_df[c] * gold_rate / OZ_TO_GRAM
+            st.plotly_chart(plot_gold_candlestick(gold_cny_df, yaxis_title="价格 (¥/克)"), use_container_width=True)
 
         st.subheader("每日涨跌幅")
         st.plotly_chart(plot_gold_daily_change(gold_df_90d), use_container_width=True)

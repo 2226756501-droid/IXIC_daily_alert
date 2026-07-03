@@ -155,7 +155,7 @@ def plot_gold_price(df: pd.DataFrame) -> go.Figure:
     return fig
 
 
-def plot_gold_candlestick(df: pd.DataFrame) -> go.Figure:
+def plot_gold_candlestick(df: pd.DataFrame, yaxis_title: str | None = None) -> go.Figure:
     has_ohlc = all(c in df.columns for c in ["open", "high", "low"])
     fig: go.Figure = go.Figure()
     if has_ohlc:
@@ -171,7 +171,7 @@ def plot_gold_candlestick(df: pd.DataFrame) -> go.Figure:
     fig.update_layout(
         template="plotly_white", height=400,
         hovermode="x unified",
-        xaxis_title="日期", yaxis_title="价格 ($/盎司)",
+        xaxis_title="日期", yaxis_title=yaxis_title or "价格 ($/盎司)",
         xaxis_rangeslider_visible=False,
     )
     return fig
