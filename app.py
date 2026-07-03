@@ -551,23 +551,23 @@ with tab9:
 
                 fig_gbt = go.Figure()
                 fig_gbt.add_trace(go.Scatter(
-                    x=g_results["multiplier"], y=g_results["f1_score"],
+                    x=g_res_df["multiplier"], y=g_res_df["f1_score"],
                     mode="lines+markers", name="F1 分数",
                     line=dict(color="#FFD700", width=3),
                     marker=dict(size=10),
                 ))
                 fig_gbt.add_trace(go.Scatter(
-                    x=g_results["multiplier"], y=g_results["precision"],
+                    x=g_res_df["multiplier"], y=g_res_df["precision"],
                     mode="lines+markers", name="精确率",
                     line=dict(color="#3498db", width=2, dash="dash"),
                 ))
                 fig_gbt.add_trace(go.Scatter(
-                    x=g_results["multiplier"], y=g_results["recall"],
+                    x=g_res_df["multiplier"], y=g_res_df["recall"],
                     mode="lines+markers", name="召回率",
                     line=dict(color="#e74c3c", width=2, dash="dot"),
                 ))
                 fig_gbt.add_trace(go.Bar(
-                    x=g_results["multiplier"], y=g_results["total_alerts"],
+                    x=g_res_df["multiplier"], y=g_res_df["total_alerts"],
                     name="总预警数", yaxis="y2", opacity=0.3,
                     marker_color="#95a5a6",
                 ))
