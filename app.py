@@ -471,15 +471,18 @@ with tab8:
             st.caption(f"共 {len(events_detail)} 条历史预警（倍率=1.0），当前倍率 {_current_mult} 触发 {len(cur_filtered)} 条")
 
 with tab9:
+    OZ_TO_GRAM: float = 31.1034768
+    gold_cny_gram: float = gold_cny / OZ_TO_GRAM if gold_cny else 0.0
+
     st.subheader("🥇 黄金价格监控")
-    st.caption("数据源：Yahoo Finance (GC=F)")
+    st.caption("数据源：Yahoo Finance (GC=F)，人民币价格为每克")
 
     if gold_close:
         col_g1, col_g2, col_g3, col_g4 = st.columns(4)
         with col_g1:
-            st.metric("美元价格", f"${gold_close:.2f}", f"{gold_change:+.2f}")
+            st.metric("美元/盎司", f"${gold_close:.2f}", f"{gold_change:+.2f}")
         with col_g2:
-            st.metric("人民币价格", f"¥{gold_cny:.2f}", f"汇率 {gold_rate:.4f}" if gold_rate else "")
+            st.metric("人民币/克", f"¥{gold_cny_gram:.2f}", f"汇率 {gold_rate:.4f}" if gold_rate else "")
         with col_g3:
             st.metric("涨跌幅", f"{gold_pct:+.2f}%", gold_date if gold_date else "")
         with col_g4:
