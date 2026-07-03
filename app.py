@@ -38,6 +38,7 @@ from modules.types import Record
 from modules.holidays import is_market_open, next_holiday, next_market_day
 from modules import agent_engine
 from modules.backtester import run_backtest, get_optimal_multiplier
+from modules.data_fetcher import init_history
 from modules.gold_backtester import run_gold_backtest, get_optimal_multiplier as get_optimal_gold_multiplier
 
 GITHUB_RAW: str = "https://raw.githubusercontent.com/2226756501-droid/IXIC_daily_alert/main"
@@ -120,6 +121,15 @@ def fetch_json_with_cache(url: str, cache_path: str) -> dict[str, Any]:
         return {}
 
 df: pd.DataFrame | None = _cached_fetch_csv(HISTORY_URL, CACHE_HISTORY)
+init_history()
+local_records: list[Record] = load_history()
+if local_records:
+    local_df: pd.DataFrame = pd.DataFrame([r._asdict() for r in local_records])
+    local_df["date"] = pd.to_datetime(local_df["date"])
+    local_df = local_df.sort_values("date").reset_index(drop=True)
+    if df is None or local_df["date"].max() > df["date"].max():
+        df = local_df
+        USING_CACHE["history"] = False
 if df is None:
     st.error("无法加载数据：GitHub 和本地缓存都不可用")
     st.stop()
