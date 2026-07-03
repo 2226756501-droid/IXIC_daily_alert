@@ -139,6 +139,59 @@ def plot_drawdown_analysis(df: pd.DataFrame) -> go.Figure:
     return fig
 
 
+def plot_gold_price(df: pd.DataFrame) -> go.Figure:
+    fig: go.Figure = go.Figure()
+    fig.add_trace(go.Scatter(
+        x=df["date"], y=df["close"],
+        mode="lines", name="黄金价格",
+        line=dict(color="#FFD700", width=2),
+    ))
+    fig.update_layout(
+        template="plotly_white", height=400,
+        hovermode="x unified",
+        xaxis_title="日期", yaxis_title="价格 ($/盎司)",
+    )
+    return fig
+
+
+def plot_gold_candlestick(df: pd.DataFrame) -> go.Figure:
+    has_ohlc = all(c in df.columns for c in ["open", "high", "low"])
+    fig: go.Figure = go.Figure()
+    if has_ohlc:
+        fig.add_trace(go.Candlestick(
+            x=df["date"], open=df["open"], high=df["high"],
+            low=df["low"], close=df["close"],
+            name="黄金",
+            increasing_line_color="#FFD700",
+            decreasing_line_color="#8B4513",
+        ))
+    else:
+        return plot_gold_price(df)
+    fig.update_layout(
+        template="plotly_white", height=400,
+        hovermode="x unified",
+        xaxis_title="日期", yaxis_title="价格 ($/盎司)",
+        xaxis_rangeslider_visible=False,
+    )
+    return fig
+
+
+def plot_gold_daily_change(df: pd.DataFrame) -> go.Figure:
+    colors: list[str] = ["#2ecc71" if v >= 0 else "#e74c3c" for v in df["pct"]]
+    fig: go.Figure = go.Figure()
+    fig.add_trace(go.Bar(
+        x=df["date"], y=df["pct"],
+        marker_color=colors, name="涨跌幅",
+    ))
+    fig.add_hline(y=0, line_dash="dash", line_color="gray")
+    fig.update_layout(
+        template="plotly_white", height=250,
+        hovermode="x unified",
+        xaxis_title="日期", yaxis_title="涨跌幅 (%)",
+    )
+    return fig
+
+
 def plot_statistics(df: pd.DataFrame) -> go.Figure:
     fig: go.Figure = make_subplots(
         rows=2, cols=2,

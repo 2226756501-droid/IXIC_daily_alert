@@ -27,8 +27,13 @@ from modules.visualizer import (
     plot_comparison_chart,
     plot_drawdown_analysis,
     plot_statistics,
+    plot_gold_price,
+    plot_gold_candlestick,
+    plot_gold_daily_change,
 )
 from modules.storage import load_history, load_feedback
+from modules.gold_fetcher import get_today_gold, init_gold_history, fetch_gold_chart
+from modules.gold_storage import load_gold_history, load_gold_state, save_gold_state
 from modules.types import Record
 from modules.holidays import is_market_open, next_holiday, next_market_day
 from modules import agent_engine
@@ -194,6 +199,25 @@ else:
         days_until: int = (h_date - today).days
         st.caption(f"📅 下一个休市日：{h_date}（{h_name}），还有 {days_until} 天")
 
+init_gold_history()
+gold_records: list[Any] = load_gold_history()
+
+gold_state: dict[str, Any] = load_gold_state()
+try:
+    _gold_today = get_today_gold()
+    gold_msg, gold_pct, gold_date, gold_close, gold_change, gold_open, gold_high, gold_low, gold_volume, gold_cny, gold_rate = _gold_today
+    if not gold_date:
+        gold_msg = "暂无黄金数据"
+except Exception:
+    gold_msg = "黄金数据获取失败"
+    gold_pct = gold_date = gold_close = gold_change = 0.0
+    gold_open = gold_high = gold_low = gold_volume = 0.0
+    gold_cny = gold_rate = 0.0
+
+gold_df: pd.DataFrame | None = None
+if gold_records:
+    gold_df = pd.DataFrame(gold_records)
+    gold_df["date"] = pd.to_datetime(gold_df["date"])
 
 
 def _save_local_feedback(rating: str) -> None:
@@ -204,8 +228,8 @@ def _save_local_feedback(rating: str) -> None:
         logger.warning("保存反馈失败: %s", e)
 
 
-tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8 = st.tabs([
-    "📈 行情走势", "📊 统计分析", "📉 回撤分析", "📰 新闻", "⚙️ 异常事件", "🤖 AI 分析", "💬 反馈", "🎯 回测对比"
+tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9 = st.tabs([
+    "📈 行情走势", "📊 统计分析", "📉 回撤分析", "📰 新闻", "⚙️ 异常事件", "🤖 AI 分析", "💬 反馈", "🎯 回测对比", "🥇 黄金价格"
 ])
 
 with tab1:
@@ -432,3 +456,44 @@ with tab8:
                 st.info("当前倍率下无预警事件")
 
             st.caption(f"共 {len(events_detail)} 条历史预警（倍率=1.0），当前倍率 {_current_mult} 触发 {len(cur_filtered)} 条")
+
+with tab9:
+    st.subheader("🥇 黄金价格监控")
+    st.caption("数据源：Yahoo Finance (GC=F)")
+
+    if gold_close:
+        col_g1, col_g2, col_g3, col_g4 = st.columns(4)
+        with col_g1:
+            st.metric("美元价格", f"${gold_close:.2f}", f"{gold_change:+.2f}")
+        with col_g2:
+            st.metric("人民币价格", f"¥{gold_cny:.2f}", f"汇率 {gold_rate:.4f}" if gold_rate else "")
+        with col_g3:
+            st.metric("涨跌幅", f"{gold_pct:+.2f}%", gold_date if gold_date else "")
+        with col_g4:
+            st.metric("最高 / 最低", f"${gold_high:.2f} / ${gold_low:.2f}" if gold_high and gold_low else "N/A")
+    else:
+        st.info("暂无黄金数据")
+
+    if gold_df is not None and not gold_df.empty:
+        gold_df_90d: pd.DataFrame = gold_df[gold_df["date"] >= gold_df["date"].max() - pd.Timedelta(days=90)]
+
+        st.subheader("近 90 日 K 线走势")
+        st.plotly_chart(plot_gold_candlestick(gold_df_90d), use_container_width=True)
+
+        st.subheader("每日涨跌幅")
+        st.plotly_chart(plot_gold_daily_change(gold_df_90d), use_container_width=True)
+
+        with st.expander("📋 历史数据表"):
+            display_df = gold_df_90d.copy()
+            display_df["date"] = display_df["date"].dt.strftime("%Y-%m-%d")
+            display_df = display_df.rename(columns={
+                "date": "日期", "close": "收盘价", "change": "涨跌额",
+                "pct": "涨跌幅%", "open": "开盘价", "high": "最高价",
+                "low": "最低价", "volume": "成交量",
+            })
+            display_df = display_df.drop(columns=["fetch_time"], errors="ignore")
+            st.dataframe(display_df.sort_values("日期", ascending=False), use_container_width=True, hide_index=True)
+
+        st.caption(f"数据范围：{gold_df['date'].min().strftime('%Y-%m-%d')} ~ {gold_df['date'].max().strftime('%Y-%m-%d')}，共 {len(gold_df)} 条记录")
+    else:
+        st.info("黄金历史数据不足")
