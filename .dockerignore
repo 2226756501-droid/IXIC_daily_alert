@@ -21,3 +21,6 @@ run_web.bat
 !threshold_config.json
 !market_state.json
 !memory.json
+!gold_state.json
+!health.json
+!uptime.json
