@@ -38,6 +38,7 @@ from modules.types import Record
 from modules.holidays import is_market_open, next_holiday, next_market_day
 from modules import agent_engine
 from modules.backtester import run_backtest, get_optimal_multiplier
+from modules.gold_backtester import run_gold_backtest, get_optimal_multiplier as get_optimal_gold_multiplier
 
 GITHUB_RAW: str = "https://raw.githubusercontent.com/2226756501-droid/IXIC_daily_alert/main"
 HISTORY_URL: str = f"{GITHUB_RAW}/history.csv"
@@ -507,5 +508,89 @@ with tab9:
             st.dataframe(display_df.sort_values("日期", ascending=False), use_container_width=True, hide_index=True)
 
         st.caption(f"数据范围：{gold_df['date'].min().strftime('%Y-%m-%d')} ~ {gold_df['date'].max().strftime('%Y-%m-%d')}，共 {len(gold_df)} 条记录")
+
+        st.divider()
+        st.subheader("🎯 黄金 Z-score 回测")
+        st.caption("评估不同 Z-score 阈值的历史预警表现（过去 20 天窗口，预测未来 10 个交易日，回撤 ≤ -2% 视为有效预警）")
+
+        gold_records_list = load_gold_history()
+        if len(gold_records_list) < 30:
+            st.warning("黄金历史数据不足 30 条，无法回测")
+        else:
+            g_results, g_events_detail = run_gold_backtest(gold_records_list)
+            if not g_results:
+                st.warning("回测数据不足")
+            else:
+                g_best = get_optimal_gold_multiplier(g_results)
+                if g_best:
+                    st.success(f"🏆 黄金最优倍率：**{g_best['multiplier']}**（F1={g_best['f1_score']:.3f}，精确率={g_best['precision']:.1%}，召回率={g_best['recall']:.1%}）")
+
+                g_res_df: pd.DataFrame = pd.DataFrame(g_results)
+                g_res_df_display = g_res_df.rename(columns={
+                    "multiplier": "倍率",
+                    "threshold_2sigma": "2σ 阈值",
+                    "total_alerts": "总预警",
+                    "correct_alerts": "有效预警",
+                    "precision": "精确率",
+                    "recall": "召回率",
+                    "f1_score": "F1",
+                    "true_positive": "TP",
+                    "false_positive": "FP",
+                    "true_negative": "TN",
+                    "false_negative": "FN",
+                    "alert_rate": "预警率(%)",
+                })
+                g_col_fmt: dict[str, str] = {
+                    "精确率": "{:.1%}", "召回率": "{:.1%}", "F1": "{:.3f}",
+                    "预警率(%)": "{:.1f}",
+                }
+                st.dataframe(
+                    g_res_df_display.style.format(g_col_fmt, subset=list(g_col_fmt.keys())),
+                    use_container_width=True, hide_index=True,
+                )
+
+                fig_gbt = go.Figure()
+                fig_gbt.add_trace(go.Scatter(
+                    x=g_results["multiplier"], y=g_results["f1_score"],
+                    mode="lines+markers", name="F1 分数",
+                    line=dict(color="#FFD700", width=3),
+                    marker=dict(size=10),
+                ))
+                fig_gbt.add_trace(go.Scatter(
+                    x=g_results["multiplier"], y=g_results["precision"],
+                    mode="lines+markers", name="精确率",
+                    line=dict(color="#3498db", width=2, dash="dash"),
+                ))
+                fig_gbt.add_trace(go.Scatter(
+                    x=g_results["multiplier"], y=g_results["recall"],
+                    mode="lines+markers", name="召回率",
+                    line=dict(color="#e74c3c", width=2, dash="dot"),
+                ))
+                fig_gbt.add_trace(go.Bar(
+                    x=g_results["multiplier"], y=g_results["total_alerts"],
+                    name="总预警数", yaxis="y2", opacity=0.3,
+                    marker_color="#95a5a6",
+                ))
+                fig_gbt.update_layout(
+                    title="黄金 倍率 vs 预警表现",
+                    template="plotly_white", height=400,
+                    hovermode="x unified",
+                    yaxis=dict(title="分数", range=[0, 1.05]),
+                    yaxis2=dict(title="预警数", overlaying="y", side="right"),
+                    legend=dict(orientation="h", yanchor="bottom", y=1.02),
+                )
+                st.plotly_chart(fig_gbt, use_container_width=True)
+
+                st.divider()
+                st.subheader("📋 黄金历史预警详情（倍率 = 1.0）")
+                if g_events_detail:
+                    g_detail_df: pd.DataFrame = pd.DataFrame(g_events_detail[-50:])
+                    g_detail_df = g_detail_df.sort_values("date", ascending=False)
+                    g_detail_df["is_correct"] = g_detail_df["is_correct"].map({True: "✅ 有效", False: "❌ 误报"})
+                    st.dataframe(g_detail_df, use_container_width=True, hide_index=True)
+                else:
+                    st.info("倍率=1.0 下无黄金预警事件")
+
+                st.caption(f"共 {len(g_events_detail)} 条黄金历史预警（倍率=1.0）")
     else:
         st.info("黄金历史数据不足")
