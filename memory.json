@@ -19,7 +19,17 @@
       "change_pct": -0.8,
       "lasted_days": null,
       "recovery_date": null
+    },
+    {
+      "id": 3,
+      "date": "2026-07-20",
+      "trigger_z": -0.02,
+      "consecutive_drops": 3,
+      "close": 25508.07,
+      "change_pct": -0.05,
+      "lasted_days": null,
+      "recovery_date": null
     }
   ],
-  "next_id": 3
+  "next_id": 4
 }
