@@ -1,9 +1,9 @@
 {
   "state": "abnormal",
-  "consecutive_drops": 5,
+  "consecutive_drops": 6,
   "abnormal_since": "2026-07-24",
   "max_drawdown_3m": {
-    "max_drawdown_pct": -8.18,
-    "date": "2026-07-28"
+    "max_drawdown_pct": -9.78,
+    "date": "2026-07-29"
   }
 }
