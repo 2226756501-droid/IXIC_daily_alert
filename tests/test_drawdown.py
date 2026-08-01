@@ -1,18 +1,33 @@
+from datetime import datetime, timezone
 from unittest.mock import patch
 
 from modules.drawdown import calc_max_drawdown_3m
 from modules.data_fetcher import Record
 
+FIXED_NOW = datetime(2026, 5, 10, tzinfo=timezone.utc)
+
+
+class FakeDatetime(datetime):
+    @classmethod
+    def now(cls, tz=None):
+        return FIXED_NOW.astimezone(tz) if tz else FIXED_NOW
+
 
 def test_calc_max_drawdown_3m_no_file() -> None:
-    with patch("modules.drawdown.load_history", return_value=[]):
+    with (
+        patch("modules.drawdown.datetime", FakeDatetime),
+        patch("modules.drawdown.load_history", return_value=[]),
+    ):
         result = calc_max_drawdown_3m()
         assert result is None
 
 
 def test_calc_max_drawdown_3m_less_than_2_rows() -> None:
     records = [Record("2026-05-01", 15000.0, 100.0, 0.67, 0.5, 15000.0, 15100.0, 14900.0, 1000000.0, "")]
-    with patch("modules.drawdown.load_history", return_value=records):
+    with (
+        patch("modules.drawdown.datetime", FakeDatetime),
+        patch("modules.drawdown.load_history", return_value=records),
+    ):
         result = calc_max_drawdown_3m()
         assert result is None
 
@@ -24,7 +39,10 @@ def test_calc_max_drawdown_3m_normal() -> None:
         Record("2026-05-03", 14500.0, -300.0, -2.03, -2.1, 14500.0, 14600.0, 14400.0, 1200000.0, ""),
         Record("2026-05-04", 14600.0, 100.0, 0.69, -0.5, 14600.0, 14700.0, 14500.0, 900000.0, ""),
     ]
-    with patch("modules.drawdown.load_history", return_value=records):
+    with (
+        patch("modules.drawdown.datetime", FakeDatetime),
+        patch("modules.drawdown.load_history", return_value=records),
+    ):
         result = calc_max_drawdown_3m()
         assert result is not None
         assert "max_drawdown_pct" in result
@@ -39,7 +57,10 @@ def test_calc_max_drawdown_3m_no_drawdown() -> None:
         Record("2026-05-03", 14500.0, 300.0, 2.11, 1.8, 14500.0, 14600.0, 14400.0, 1200000.0, ""),
         Record("2026-05-04", 14800.0, 300.0, 2.07, 1.9, 14800.0, 14900.0, 14700.0, 900000.0, ""),
     ]
-    with patch("modules.drawdown.load_history", return_value=records):
+    with (
+        patch("modules.drawdown.datetime", FakeDatetime),
+        patch("modules.drawdown.load_history", return_value=records),
+    ):
         result = calc_max_drawdown_3m()
         assert result is not None
         assert result["max_drawdown_pct"] == 0.0
