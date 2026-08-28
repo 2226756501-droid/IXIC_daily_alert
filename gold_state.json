@@ -1,5 +1,5 @@
 {
-  "direction": "up",
-  "consecutive_drops": 0,
-  "consecutive_rises": 6
+  "direction": "down",
+  "consecutive_drops": 1,
+  "consecutive_rises": 0
 }
