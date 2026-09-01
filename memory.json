@@ -59,7 +59,17 @@
       "change_pct": -1.33,
       "lasted_days": null,
       "recovery_date": null
+    },
+    {
+      "id": 7,
+      "date": "2026-09-01",
+      "trigger_z": -0.16,
+      "consecutive_drops": 3,
+      "close": 26370.89,
+      "change_pct": -0.12,
+      "lasted_days": null,
+      "recovery_date": null
     }
   ],
-  "next_id": 7
+  "next_id": 8
 }
